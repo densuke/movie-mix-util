@@ -1,0 +1,99 @@
+# .gitignore for mix-sample
+
+# ---------------------------
+# Bytecode / build artifacts
+# ---------------------------
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+wheelhouse/
+
+# ---------------------------
+# Virtual environments
+# ---------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# ---------------------------
+# Testing / coverage / caches
+# ---------------------------
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Type checking caches
+.mypy_cache/
+.pyre/
+
+# ---------------------------
+# Editor / OS files
+# ---------------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ---------------------------
+# Logs / runtime / temp
+# ---------------------------
+logs/
+*.log
+*.log.*
+*.tmp
+*.temp
+*.part
+*.partial
+
+# ffmpeg / media intermediate files
+*.tmp.mp4
+*.logpipe
+
+# ---------------------------
+# Notebook
+# ---------------------------
+.ipynb_checkpoints/
+
+# ---------------------------
+# Compiled extensions / system artifacts
+# ---------------------------
+*.so
+*.dylib
+
+# ---------------------------
+# Local env / secrets
+# ---------------------------
+.env
+.env.local
+.env.*.local
+.python-version
+
+# ---------------------------
+# Misc
+# ---------------------------
+*.egg
+*.whl
+
+# ---------------------------
+# Files intentionally kept in repo
+# ---------------------------
+# Do NOT ignore: pyproject.toml, uv.lock, samples/, tests/, and tracked outputs
+# If you add other generated files that should be committed, list them explicitly above or
+# remove them from this file when you intend to track them.

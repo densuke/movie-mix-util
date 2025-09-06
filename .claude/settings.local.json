@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv self:*)",
+      "Bash(uv init:*)",
+      "Bash(uv add:*)",
+      "Bash(uv run:*)",
+      "Bash(ffprobe:*)",
+      "Bash(python:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(uv:*)",
+      "Bash(PYTHONPATH=. uv run pytest tests/test_video_processing_lib.py::TestVideoProcessor::test_video_processor_initialization_default -v)",
+      "Bash(ffmpeg:*)",
+      "Bash(if [ -d tests/output ])",
+      "Bash(then ls -lah tests/output/)",
+      "Bash(else echo \"tests/outputディレクトリが存在しません\")",
+      "Bash(fi)",
+      "Bash(find:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
