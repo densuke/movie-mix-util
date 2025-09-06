@@ -16,10 +16,20 @@
 ## インストール
 
 ```bash
-# 開発環境
+# pip で直接 Git リポジトリからインストール（PyPI に未公開の場合など）
+# 最新コミットをインストール
+pip install git+https://github.com/densuke/movie-mix-util.git
+
+# 特定ブランチやタグを指定する場合（例: main ブランチ）
+pip install git+https://github.com/densuke/movie-mix-util.git@main
+
+# uv でリポジトリを依存として追加する（uv が使える環境向け）
+uv add git+https://github.com/densuke/movie-mix-util.git
+
+# 開発依存を追加する例
 uv add --dev pytest pytest-cov black ruff
 
-# FFmpegが必要
+# FFmpeg が必要
 # macOS: brew install ffmpeg
 # Ubuntu: sudo apt install ffmpeg
 ```
