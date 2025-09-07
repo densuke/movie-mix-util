@@ -359,11 +359,21 @@ def build_sequence_from_args(videos: List[str], transitions: List[Transition]) -
     return sequence
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     """コマンドライン引数をパースする
     
+    動画連結スクリプトのコマンドライン引数をパースし、
+    適切なヘルプメッセージと例を提供する。
+    
     Returns:
-        argparse.Namespace: パースされた引数
+        argparse.Namespace: パースされたコマンドライン引数
+        
+    Examples:
+        >>> args = parse_arguments()
+        >>> args.videos
+        ['A.mp4', 'B.mp4', 'C.mp4']
+        >>> args.output
+        'result.mp4'
     """
     parser = argparse.ArgumentParser(
         description="複数動画を高度な結合モードで連結",
@@ -583,8 +593,16 @@ def create_crossfade_video(
         raise
 
 
-def main():
-    """メイン関数"""
+def main() -> None:
+    """メイン関数 - コマンドラインインターフェースのエントリーポイント
+    
+    コマンドライン引数をパースし、動画連結処理を実行する。
+    エラー発生時には適切なメッセージとともに終了する。
+    
+    Examples:
+        $ python advanced_video_concatenator.py A.mp4 B.mp4 --output result.mp4
+        $ python advanced_video_concatenator.py A.mp4 B.mp4 C.mp4 --crossfade "1.0:no_increase" --output result.mp4
+    """
     # コマンドライン引数をパース
     args = parse_arguments()
     
