@@ -15,7 +15,9 @@
       "Bash(then ls -lah tests/output/)",
       "Bash(else echo \"tests/outputディレクトリが存在しません\")",
       "Bash(fi)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

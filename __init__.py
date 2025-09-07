@@ -1,7 +1,15 @@
 """
-mix-sample: 動画処理・合成・連結ライブラリ
+movie-mix-util: Modern video processing, composition, and concatenation library
 
-動画の合成、連結、画像オーバーレイなどの処理を提供する。
+Provides advanced video processing capabilities including composition, concatenation,
+crossfade effects, and image overlay operations using FFmpeg.
+
+Features:
+- Video concatenation with crossfade transitions
+- Image overlay on video backgrounds
+- Multiple crossfade effects (fade, dissolve, wipe, slide, etc.)
+- Flexible output modes and duration control
+- Type-safe API with comprehensive documentation
 """
 
 try:
@@ -11,7 +19,6 @@ try:
         Transition, TransitionMode, VideoProcessingError,
         quick_concatenate, quick_mix, quick_crossfade
     )
-    from .video_mixer import mix_video_with_image
     from .advanced_video_concatenator import (
         concatenate_videos_advanced, create_crossfade_video,
         CrossfadeEffect, CrossfadeOutputMode
@@ -23,14 +30,15 @@ except ImportError:
         Transition, TransitionMode, VideoProcessingError,
         quick_concatenate, quick_mix, quick_crossfade
     )
-    from video_mixer import mix_video_with_image
     from advanced_video_concatenator import (
         concatenate_videos_advanced, create_crossfade_video,
         CrossfadeEffect, CrossfadeOutputMode
     )
 
-__version__ = "0.2.0"
-__author__ = "mix-sample project"
+__version__ = "1.0.0"
+__author__ = "movie-mix-util project"
+__license__ = "MIT"
+__homepage__ = "https://github.com/densuke/movie-mix-util"
 
 __all__ = [
     # クラス
@@ -48,7 +56,6 @@ __all__ = [
     "quick_concatenate",
     "quick_mix",
     "quick_crossfade",
-    "mix_video_with_image",
     "concatenate_videos_advanced",
     "create_crossfade_video",
 ]

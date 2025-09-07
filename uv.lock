@@ -142,8 +142,8 @@ wheels = [
 ]
 
 [[package]]
-name = "mix-sample"
-version = "0.2.0"
+name = "movie-mix-util"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "ffmpeg-python" },

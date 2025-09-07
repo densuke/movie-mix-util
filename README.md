@@ -1,158 +1,192 @@
-# mix-sample - 動画処理ライブラリ
+# movie-mix-util - Modern Video Processing Library
 
-動画の合成・連結・画像オーバーレイを行うPythonライブラリです。
+A comprehensive Python library for video processing, composition, and concatenation with advanced crossfade effects.
 
-## 特徴
+## Features
 
-- **動画連結**: 複数動画を様々な結合モードで連結
-- **画像合成**: 背景動画に画像をオーバーレイ
-- **3つの結合モード**:
-  - 単純結合: そのまま連結
-  - クロスフェード(増加無し): 前動画短縮、総時間変化なし
-  - クロスフェード(増加あり): フェイド時間分総時間増加
-- **Python API**: プログラムから利用可能
-- **コマンドライン**: 直接実行可能
+- **Video Concatenation**: Combine multiple videos with various transition modes
+- **Crossfade Effects**: 30+ professional transition effects (fade, dissolve, wipe, slide, etc.)
+- **Image Overlay**: Overlay images on video backgrounds with automatic scaling
+- **Multiple Output Modes**: 
+  - Fade-only segments
+  - Full concatenated sequences  
+  - Custom duration outputs
+- **Type-Safe API**: Modern Python with comprehensive type hints
+- **Professional Documentation**: Complete API reference and examples
 
-## インストール
+## Installation
+
+### Requirements
+- Python 3.12+
+- FFmpeg (required for video processing)
 
 ```bash
-# pip で直接 Git リポジトリからインストール（PyPI に未公開の場合など）
-# 最新コミットをインストール
+# Install FFmpeg
+# macOS: 
+brew install ffmpeg
+# Ubuntu: 
+sudo apt install ffmpeg
+# Windows: Download from https://ffmpeg.org/
+
+# Install movie-mix-util
 pip install git+https://github.com/densuke/movie-mix-util.git
 
-# 特定ブランチやタグを指定する場合（例: main ブランチ）
-pip install git+https://github.com/densuke/movie-mix-util.git@main
-
-# uv でリポジトリを依存として追加する（uv が使える環境向け）
-uv add git+https://github.com/densuke/movie-mix-util.git
-
-# 開発依存を追加する例
-uv add --dev pytest pytest-cov black ruff
-
-# FFmpeg が必要
-# macOS: brew install ffmpeg
-# Ubuntu: sudo apt install ffmpeg
+# For development
+git clone https://github.com/densuke/movie-mix-util.git
+cd movie-mix-util
+uv sync --dev
 ```
 
-## 使い方
+## Quick Start
 
-### コマンドライン使用
-
-#### 1. 高度な動画連結
-
-```bash
-# 単純結合
-python advanced_video_concatenator.py A.mp4 B.mp4 C.mp4 --output result.mp4
-
-# クロスフェイド結合
-python advanced_video_concatenator.py A.mp4 B.mp4 C.mp4 \
-  --crossfade "1.0:no_increase,1.5:increase" --output result.mp4
-```
-
-#### 2. 動画・画像ミックス
-
-```bash
-python video_mixer.py background.mp4 overlay.png 30 output.mp4
-```
-
-### Python API使用
-
-#### 基本的な使い方
+### Basic Video Concatenation
 
 ```python
-from mix_sample import VideoProcessor, TransitionMode, VideoSequenceBuilder
+from movie_mix_util import VideoProcessor, VideoSequenceBuilder, TransitionMode
 
-# プロセッサ初期化
+# Create processor
 processor = VideoProcessor()
 
-# シーケンス作成（ビルダーパターン）
+# Build sequence with transitions
 sequence = (VideoSequenceBuilder()
-           .add_video("A.mp4")
-           .add_crossfade(1.0, TransitionMode.CROSSFADE_NO_INCREASE)
-           .add_video("B.mp4")
-           .add_crossfade(1.5, TransitionMode.CROSSFADE_INCREASE) 
-           .add_video("C.mp4")
-           .build())
+    .add_video("video1.mp4")
+    .add_crossfade(1.0, TransitionMode.CROSSFADE_NO_INCREASE)
+    .add_video("video2.mp4")
+    .add_crossfade(2.0, TransitionMode.CROSSFADE_INCREASE)
+    .add_video("video3.mp4")
+    .build())
 
-# 実行
+# Process videos
 result = processor.concatenate_videos(sequence, "output.mp4")
-print(f"生成動画: {result.duration:.1f}秒")
+print(f"Created video: {result.duration:.1f} seconds")
 ```
 
-#### クイック関数
+### Quick Functions
 
 ```python
-from mix_sample import quick_concatenate, quick_mix, TransitionMode
+from movie_mix_util import quick_concatenate, quick_mix, quick_crossfade
 
-# すべて同じ設定で連結
+# Simple concatenation
 result = quick_concatenate(
-    ["A.mp4", "B.mp4", "C.mp4"],
-    "output.mp4", 
-    crossfade_duration=2.0,
-    crossfade_mode=TransitionMode.CROSSFADE_NO_INCREASE
+    ["video1.mp4", "video2.mp4", "video3.mp4"],
+    "combined.mp4",
+    crossfade_duration=1.5
 )
 
-# 動画・画像ミックス
-result = quick_mix("background.mp4", "overlay.png", "mixed.mp4", duration=30)
+# Video + image overlay
+result = quick_mix(
+    "background_video.mp4", 
+    "overlay_image.png", 
+    "mixed_output.mp4", 
+    duration=30
+)
+
+# Standalone crossfade effect
+result = quick_crossfade(
+    "video1.mp4", 
+    "video2.mp4",
+    fade_duration=2.0,
+    output_path="crossfade.mp4"
+)
 ```
 
-## 結合モード詳細
+### Advanced Crossfade Effects
 
-| モード | 説明 | 時間計算例 |
-|-------|------|-----------|
-| `none` | 単純結合 | A(15s) + B(15s) = 30s |
-| `no_increase` | 前動画短縮 | A(14s) + fade(1s) + B(15s) = 30s |  
-| `increase` | フェイド時間追加 | A(15s) + fade(1s) + B(15s) = 31s |
+```python
+from movie_mix_util import create_crossfade_video, CrossfadeEffect, CrossfadeOutputMode
 
-## 時間計算例
-
+# Create professional crossfade with specific effect
+result = create_crossfade_video(
+    "video1.mp4",
+    "video2.mp4", 
+    fade_duration=1.5,
+    output_path="professional_transition.mp4",
+    effect=CrossfadeEffect.SLIDE_RIGHT,
+    output_mode=CrossfadeOutputMode.FADE_ONLY
+)
 ```
-入力: A(15s), クロス(無し,1s), B(15s), クロス(有り,1s), C(15s)
-結果: A(14s) + 1s + B(15s) + 1s + C(15s) = 46s
-```
 
-## API Reference
+## Transition Modes
 
-### クラス
+| Mode | Description | Duration Calculation |
+|------|-------------|---------------------|
+| `NONE` | Simple concatenation | A(15s) + B(15s) = 30s |
+| `CROSSFADE_NO_INCREASE` | Overlap transition | A(14s) + fade(1s) + B(15s) = 30s |
+| `CROSSFADE_INCREASE` | Additive transition | A(15s) + fade(1s) + B(15s) = 31s |
 
-- `VideoProcessor`: メイン処理クラス
-- `VideoSequenceBuilder`: シーケンス構築ビルダー
-- `VideoInfo`: 動画情報
-- `VideoSegment`: 動画セグメント
-- `Transition`: トランジション設定
+## Crossfade Effects
 
-### Enum
+Available effects include: `FADE`, `DISSOLVE`, `WIPE_LEFT`, `WIPE_RIGHT`, `SLIDE_LEFT`, `SLIDE_RIGHT`, `CIRCLE_CROP`, `RECT_CROP`, and many more. See [API_REFERENCE.md](API_REFERENCE.md) for the complete list.
 
-- `TransitionMode.NONE`: 単純結合
-- `TransitionMode.CROSSFADE_NO_INCREASE`: クロスフェード(増加無し)
-- `TransitionMode.CROSSFADE_INCREASE`: クロスフェード(増加あり)
+## Output Modes
 
-### 便利関数
+- `FADE_ONLY`: Generate only the crossfade transition segment
+- `FULL_SEQUENCE`: Complete concatenated video with transitions
+- `CUSTOM`: Custom duration output with specified length
 
-- `quick_concatenate()`: クイック動画連結
-- `quick_mix()`: クイック動画・画像ミックス
+## Documentation
 
-## 開発
+- [API Reference](API_REFERENCE.md) - Complete API documentation
+- [Examples](EXAMPLES.md) - Practical usage examples
+- [Tests](tests/) - Comprehensive test suite
+
+## Development
 
 ```bash
-# テスト実行
+# Run tests
 uv run pytest
 
-# コード整形
+# Code formatting
 uv run black .
 uv run ruff --fix .
 
-# パッケージビルド
+# Type checking
+uv run mypy .
+
+# Build package
 uv build
 ```
 
-## 要件
+## Dependencies
 
-- Python 3.12+
-- FFmpeg
-- ffmpeg-python
-- Pillow
+- **ffmpeg-python** >= 0.2.0 - FFmpeg Python bindings
+- **Pillow** >= 11.3.0 - Image processing library
 
-## ライセンス
+## Error Handling
 
-MIT License
+The library provides comprehensive error handling for common scenarios:
+
+- Missing input files
+- Invalid video formats
+- FFmpeg processing errors
+- Parameter validation errors
+
+All exceptions inherit from `VideoProcessingError` for easy catching.
+
+## Performance
+
+- Efficient FFmpeg pipeline processing
+- Memory-conscious streaming operations
+- Parallel processing where possible
+- Optimized for production workloads
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure all tests pass
+5. Submit a pull request
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Changelog
+
+### Version 1.0.0
+- Complete library rewrite with modern Python 3.12+ features
+- 30+ professional crossfade effects
+- Type-safe API with comprehensive documentation
+- Multiple output modes and flexible configuration
+- Performance optimizations and error handling improvements

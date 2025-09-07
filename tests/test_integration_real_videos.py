@@ -6,8 +6,13 @@ from pathlib import Path
 import tempfile
 import time
 
-# テスト対象のインポート
-from video_mixer import mix_video_with_image
+# テスト対象のインポート - 新しいAPIを使用
+from video_processing_lib import quick_mix
+
+# 後方互換性のためのラッパー
+def mix_video_with_image(background_video: str, overlay_image: str, output_video: str, duration: int = 30):
+    """後方互換性のためのラッパー関数"""
+    return quick_mix(background_video, overlay_image, output_video, duration)
 from advanced_video_concatenator import (
     TransitionMode,
     VideoSegment,

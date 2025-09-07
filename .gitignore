@@ -67,6 +67,19 @@ logs/
 *.logpipe
 
 # ---------------------------
+# テスト出力とメディアファイル
+# ---------------------------
+tests/output/*.mp4
+tests/frame_test/
+frame_overlap_test.py
+
+# プロジェクトルートの動画ファイル（サンプル以外）
+/*.mp4
+/*.mov
+/*.avi
+/*.mkv
+
+# ---------------------------
 # Notebook
 # ---------------------------
 .ipynb_checkpoints/
