@@ -1,6 +1,6 @@
 [project]
 name = "movie-mix-util"
-version = "1.0.0"
+version = "1.1.0"
 description = "Modern video processing, composition, and concatenation library with crossfade effects"
 readme = "README.md"
 authors = [
