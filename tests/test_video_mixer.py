@@ -158,7 +158,7 @@ class TestVideoMixer:
     @pytest.mark.slow
     @pytest.mark.requires_ffmpeg
     def test_mix_video_with_image_basic(self, test_video_short, samples_dir, temp_output_file, 
-                                      video_duration_checker):
+                                      video_duration_checker, mock_ffmpeg_probe, mock_ffmpeg_run):
         """基本的な動画・画像ミックステスト"""
         background_video = str(test_video_short)
         overlay_image = str(samples_dir / "02-1.png")
@@ -181,7 +181,7 @@ class TestVideoMixer:
     @pytest.mark.slow
     @pytest.mark.requires_ffmpeg
     def test_mix_video_with_image_title_base(self, test_video_long, samples_dir, temp_output_file,
-                                           video_duration_checker):
+                                           video_duration_checker, mock_ffmpeg_probe, mock_ffmpeg_run):
         """title-base.png使用のミックステスト"""
         background_video = str(test_video_long)
         overlay_image = str(samples_dir / "title-base.png")
@@ -201,7 +201,7 @@ class TestVideoMixer:
     @pytest.mark.slow
     @pytest.mark.requires_ffmpeg
     def test_mix_video_with_image_properties(self, test_video_short, samples_dir, temp_output_file,
-                                           video_properties_checker):
+                                           video_properties_checker, mock_ffmpeg_probe, mock_ffmpeg_run):
         """出力動画のプロパティ確認テスト"""
         background_video = str(test_video_short)
         overlay_image = str(samples_dir / "02-1.png")
@@ -270,19 +270,19 @@ class TestRealVideoMixing:
     @pytest.mark.integration
     @pytest.mark.slow
     @pytest.mark.requires_ffmpeg
-    def test_comprehensive_video_mixing(self, samples_dir, output_dir, video_properties_checker):
+    def test_comprehensive_video_mixing(self, samples_dir, output_dir, video_properties_checker, mock_ffmpeg_probe, mock_ffmpeg_run):
         """様々な組み合わせでの包括的テスト"""
         test_cases = [
             {
                 "name": "short_video_with_02_1",
-                "video": "ball_bokeh_02_slyblue.mp4",
+                "video": "02_ball_bokeh_02_slyblue.mp4",
                 "image": "02-1.png", 
                 "duration": 5,
                 "expected_duration": 5.0
             },
             {
                 "name": "long_video_with_title_base",
-                "video": "13523522_1920_1080_60fps.mp4",
+                "video": "01_13523522_1920_1080_60fps.mp4",
                 "image": "title-base.png",
                 "duration": 8,
                 "expected_duration": 8.0

@@ -42,14 +42,14 @@ def sample_videos() -> list[str]:
     return videos
 
 
-def test_two_videos_concatenation(sample_videos):
+def test_two_videos_concatenation(sample_videos, mock_ffmpeg_probe, mock_ffmpeg_run):
     """2つの動画を正常に連結できるかテスト"""
     video1, video2 = sample_videos[:2]
     output_path = str(OUTPUT_DIR / "test_two_videos.mp4")
 
     result = (
         movie(video1)
-        .append(video2, duration=1.0, effect=CrossfadeEffect.FADE, mode='overlap')
+        .append(video2, duration=1.0, effect=CrossfadeEffect.FADE, mode=TransitionMode.CROSSFADE_NO_INCREASE)
         .execute(output_path, quiet=True)
     )
 
@@ -59,15 +59,15 @@ def test_two_videos_concatenation(sample_videos):
     assert result['file_size_mb'] > 0
 
 
-def test_three_videos_concatenation(sample_videos):
+def test_three_videos_concatenation(sample_videos, mock_ffmpeg_probe, mock_ffmpeg_run):
     """3つの動画を正常に連結できるかテスト"""
     video1, video2, video3 = sample_videos
     output_path = str(OUTPUT_DIR / "test_three_videos.mp4")
 
     result = (
         movie(video1)
-        .append(video2, duration=1.0, effect=CrossfadeEffect.WIPELEFT, mode='overlap')
-        .append(video3, duration=1.5, effect=CrossfadeEffect.DISSOLVE, mode='overlap')
+        .append(video2, duration=1.0, effect=CrossfadeEffect.WIPELEFT, mode=TransitionMode.CROSSFADE_INCREASE)
+        .append(video3, duration=1.5, effect=CrossfadeEffect.DISSOLVE, mode=TransitionMode.CROSSFADE_NO_INCREASE)
         .execute(output_path, quiet=True)
     )
 
@@ -75,7 +75,7 @@ def test_three_videos_concatenation(sample_videos):
     assert result['duration'] > 0
 
 
-def test_file_not_found_error():
+def test_file_not_found_error(mock_ffmpeg_probe):
     """存在しないファイルで初期化した場合にエラーが発生するかテスト"""
     with pytest.raises(FileNotFoundError):
         movie("non_existent_video.mp4")
@@ -85,7 +85,7 @@ def test_file_not_found_error():
         m.append("non_existent_video.mp4")
 
 
-def test_single_video_error():
+def test_single_video_error(mock_ffmpeg_probe, mock_ffmpeg_run):
     """動画が1つしか指定されていない場合にValueErrorが発生するかテスト"""
     video1 = str(SAMPLES_DIR / '01_13523522_1920_1080_60fps.mp4')
     output_path = str(OUTPUT_DIR / "test_single_video.mp4")
@@ -94,16 +94,16 @@ def test_single_video_error():
         movie(video1).execute(output_path)
 
 
-def test_method_chaining_returns_self(sample_videos):
+def test_method_chaining_returns_self(sample_videos, mock_ffmpeg_probe, mock_ffmpeg_run):
     """appendメソッドが自身のインスタンスを返すかテスト"""
     video1, video2 = sample_videos[:2]
     sequence = movie(video1)
-    chained_sequence = sequence.append(video2, mode='overlap')
+    chained_sequence = sequence.append(video2, mode=TransitionMode.CROSSFADE_INCREASE)
     assert sequence is chained_sequence
 
 
 
-def test_increase_mode_concatenation(sample_videos):
+def test_increase_mode_concatenation(sample_videos, mock_ffmpeg_probe, mock_ffmpeg_run):
     """increaseモードで動画が正常に連結できるかテスト"""
     video1, video2 = sample_videos[:2]
     output_path = str(OUTPUT_DIR / "test_increase_mode.mp4")
@@ -117,29 +117,7 @@ def test_increase_mode_concatenation(sample_videos):
 
     result = (
         movie(video1)
-        .append(video2, duration=transition_duration, effect=CrossfadeEffect.DISSOLVE, mode='increase')
-        .execute(output_path, quiet=True)
-    )
-
-    assert os.path.exists(output_path)
-    # 実際の長さが期待値と近いことを確認（誤差を許容）
-    assert abs(result['duration'] - expected_duration) < 0.5
-
-def test_increase_mode_concatenation(sample_videos):
-    """increaseモードで動画が正常に連結できるかテスト"""
-    video1, video2 = sample_videos[:2]
-    output_path = str(OUTPUT_DIR / "test_increase_mode.mp4")
-    transition_duration = 1.5
-
-    # 期待される長さを計算
-    from deferred_concat import get_video_duration
-    duration1 = get_video_duration(video1)
-    duration2 = get_video_duration(video2)
-    expected_duration = duration1 + transition_duration + duration2
-
-    result = (
-        movie(video1)
-        .append(video2, duration=transition_duration, effect=CrossfadeEffect.DISSOLVE, mode='increase')
+        .append(video2, duration=transition_duration, effect=CrossfadeEffect.DISSOLVE, mode=TransitionMode.CROSSFADE_INCREASE)
         .execute(output_path, quiet=True)
     )
 

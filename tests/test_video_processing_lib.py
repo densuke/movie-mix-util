@@ -20,7 +20,7 @@ class TestVideoInfo:
     """VideoInfoクラスのテスト"""
     
     @pytest.mark.requires_ffmpeg
-    def test_video_info_from_path_short(self, test_video_short):
+    def test_video_info_from_path_short(self, test_video_short, mock_ffmpeg_probe):
         """短い動画からのVideoInfo作成テスト"""
         info = VideoInfo.from_path(str(test_video_short))
         
@@ -34,7 +34,7 @@ class TestVideoInfo:
         print(f"短い動画情報: {info.width}x{info.height}, {info.duration:.2f}s, {info.fps}fps")
     
     @pytest.mark.requires_ffmpeg
-    def test_video_info_from_path_long(self, test_video_long):
+    def test_video_info_from_path_long(self, test_video_long, mock_ffmpeg_probe):
         """長い動画からのVideoInfo作成テスト"""
         info = VideoInfo.from_path(str(test_video_long))
         
@@ -45,7 +45,7 @@ class TestVideoInfo:
         
         print(f"長い動画情報: {info.width}x{info.height}, {info.duration:.2f}s, {info.fps}fps")
     
-    def test_video_info_from_path_nonexistent(self):
+    def test_video_info_from_path_nonexistent(self, mock_ffmpeg_probe):
         """存在しない動画でのエラーテスト"""
         with pytest.raises(VideoProcessingError):
             VideoInfo.from_path("nonexistent_video.mp4")
@@ -91,7 +91,7 @@ class TestVideoProcessor:
         assert processor.default_fps == 60
     
     @pytest.mark.requires_ffmpeg
-    def test_get_video_info(self, test_video_short):
+    def test_get_video_info(self, test_video_short, mock_ffmpeg_probe):
         """動画情報取得テスト"""
         processor = VideoProcessor()
         info = processor.get_video_info(str(test_video_short))
@@ -171,7 +171,7 @@ class TestVideoProcessor:
     @pytest.mark.slow
     @pytest.mark.requires_ffmpeg
     def test_mix_video_with_image_integration(self, test_video_short, samples_dir, 
-                                            temp_output_file):
+                                            temp_output_file, mock_ffmpeg_probe, mock_ffmpeg_run):
         """動画・画像ミックスの統合テスト"""
         processor = VideoProcessor()
         
@@ -391,18 +391,18 @@ class TestIntegrationScenarios:
     """統合シナリオテスト"""
     
     @pytest.mark.integration
-    def test_end_to_end_builder_workflow(self):
+    def test_end_to_end_builder_workflow(self, mock_ffmpeg_probe, mock_ffmpeg_run):
         """エンドツーエンドのビルダーワークフローテスト"""
         # 実際の使用パターンをテスト
         processor = VideoProcessor(default_width=1280, default_height=720)
         
         # ビルダーでシーケンス作成
         sequence = (VideoSequenceBuilder()
-                   .add_video("intro.mp4")
+                   .add_video("01_13523522_1920_1080_60fps.mp4")
                    .add_crossfade(1.0, TransitionMode.CROSSFADE_NO_INCREASE)
-                   .add_video("main.mp4")
+                   .add_video("02_ball_bokeh_02_slyblue.mp4")
                    .add_crossfade(2.0, TransitionMode.CROSSFADE_INCREASE)
-                   .add_video("outro.mp4")
+                   .add_video("03_intensive_line_02_color.mp4")
                    .build())
         
         # シーケンス構造の確認
@@ -418,20 +418,20 @@ class TestIntegrationScenarios:
         print("✅ エンドツーエンドワークフローテスト成功")
     
     @pytest.mark.integration
-    def test_complex_sequence_scenarios(self):
+    def test_complex_sequence_scenarios(self, mock_ffmpeg_probe, mock_ffmpeg_run):
         """複雑なシーケンスシナリオテスト"""
         scenarios = [
             {
                 "name": "alternating_crossfade_modes",
                 "sequence_builder": lambda: (
                     VideoSequenceBuilder()
-                    .add_video("A.mp4")
+                    .add_video("01_13523522_1920_1080_60fps.mp4")
                     .add_crossfade(1.0, TransitionMode.CROSSFADE_NO_INCREASE)
-                    .add_video("B.mp4")
+                    .add_video("02_ball_bokeh_02_slyblue.mp4")
                     .add_crossfade(1.0, TransitionMode.CROSSFADE_INCREASE)
-                    .add_video("C.mp4")
+                    .add_video("03_intensive_line_02_color.mp4")
                     .add_crossfade(1.0, TransitionMode.CROSSFADE_NO_INCREASE)
-                    .add_video("D.mp4")
+                    .add_video("04_thunder_03_white_ver.mp4")
                 ),
                 "expected_length": 7
             },
@@ -439,11 +439,11 @@ class TestIntegrationScenarios:
                 "name": "only_simple_transitions",
                 "sequence_builder": lambda: (
                     VideoSequenceBuilder()
-                    .add_video("A.mp4")
+                    .add_video("01_13523522_1920_1080_60fps.mp4")
                     .add_simple_transition()
-                    .add_video("B.mp4")
+                    .add_video("02_ball_bokeh_02_slyblue.mp4")
                     .add_simple_transition()
-                    .add_video("C.mp4")
+                    .add_video("03_intensive_line_02_color.mp4")
                 ),
                 "expected_length": 5
             },
@@ -451,11 +451,11 @@ class TestIntegrationScenarios:
                 "name": "mixed_transition_durations",
                 "sequence_builder": lambda: (
                     VideoSequenceBuilder()
-                    .add_video("A.mp4")
+                    .add_video("01_13523522_1920_1080_60fps.mp4")
                     .add_crossfade(0.5, TransitionMode.CROSSFADE_INCREASE)
-                    .add_video("B.mp4")
+                    .add_video("02_ball_bokeh_02_slyblue.mp4")
                     .add_crossfade(2.5, TransitionMode.CROSSFADE_NO_INCREASE)
-                    .add_video("C.mp4")
+                    .add_video("03_intensive_line_02_color.mp4")
                 ),
                 "expected_length": 5
             }

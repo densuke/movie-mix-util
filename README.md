@@ -116,9 +116,9 @@ from deferred_concat import movie, CrossfadeEffect
 # Build and execute a sequence in a single chain
 result = (
     movie("intro.mp4")
-    .append("scene1.mp4", duration=2.0, effect=CrossfadeEffect.DISSOLVE)
-    .append("scene2.mp4", duration=1.5, effect=CrossfadeEffect.WIPELEFT)
-    .append("outro.mp4", duration=3.0, effect=CrossfadeEffect.FADE)
+    .append("scene1.mp4", duration=2.0, effect=CrossfadeEffect.DISSOLVE, mode=TransitionMode.CROSSFADE_NO_INCREASE)
+    .append("scene2.mp4", duration=1.5, effect=CrossfadeEffect.WIPELEFT, mode=TransitionMode.CROSSFADE_INCREASE)
+    .append("outro.mp4", duration=3.0, effect=CrossfadeEffect.FADE, mode=TransitionMode.CROSSFADE_NO_INCREASE)
     .execute("final_movie_deferred.mp4")
 )
 
@@ -130,7 +130,7 @@ print(f"Successfully created video: {result['output_path']}")
 | Mode | Description | Duration Calculation |
 |------|-------------|---------------------|
 | `NONE` | Simple concatenation | A(15s) + B(15s) = 30s |
-| `CROSSFADE_NO_INCREASE` | Overlap transition | A(14s) + fade(1s) + B(15s) = 30s |
+| `CROSSFADE_NO_INCREASE` | Overlap transition | A(15s) + B(15s) - 1s = 29s |
 | `CROSSFADE_INCREASE` | Additive transition | A(15s) + fade(1s) + B(15s) = 31s |
 
 ## Crossfade Effects

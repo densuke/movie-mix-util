@@ -49,6 +49,7 @@ class VideoInfo:
     width: int | None = None
     height: int | None = None
     fps: float | None = None
+    size_mb: float | None = None
 
     @classmethod
     def from_path(cls, path: str) -> VideoInfo:
