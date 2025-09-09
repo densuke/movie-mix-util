@@ -133,6 +133,72 @@ results = process_video_collection("input_videos/", "output_videos/")
 
 ## Professional Effects
 
+### Deferred Execution Crossfade Examples
+
+This section demonstrates crossfade effects using the deferred execution pattern, allowing for efficient FFmpeg command execution.
+
+#### Overlay Crossfade (Shortened Duration)
+
+This example shows how to create a crossfade effect where the total video duration is shortened by the fade duration.
+
+```python
+#!/usr/bin/env python
+from deferred_concat import movie
+from advanced_video_concatenator import CrossfadeEffect, TransitionMode
+
+def main():
+    """
+    DeferredConcatを使用して、2つのビデオをオーバーレイでクロスフェードするサンプル
+    """
+    base = movie("samples/sample_A.mp4")
+    add = "samples/sample_B.mp4"
+
+    (
+        base
+        .append(
+            add,
+            duration=1,
+            effect=CrossfadeEffect.FADE,
+            mode=TransitionMode.CROSSFADE_NO_INCREASE
+        )
+        .execute("output/overlay_crossfade.mp4")
+    )
+
+if __name__ == "__main__":
+    main()
+```
+
+#### Increase Crossfade (Increased Duration)
+
+This example demonstrates a crossfade effect where the total video duration is increased by the fade duration.
+
+```python
+#!/usr/bin/env python
+from deferred_concat import movie
+from advanced_video_concatenator import CrossfadeEffect, TransitionMode
+
+def main():
+    """
+    DeferredConcatを使用して、2つのビデオをincreaseモードでクロスフェードするサンプル
+    """
+    base = movie("samples/sample_A.mp4")
+    add = "samples/sample_B.mp4"
+
+    (
+        base
+        .append(
+            add,
+            duration=1,
+            effect=CrossfadeEffect.FADE,
+            mode=TransitionMode.CROSSFADE_INCREASE
+        )
+        .execute("output/increase_crossfade.mp4")
+    )
+
+if __name__ == "__main__":
+    main()
+```
+
 ### Advanced Crossfade Gallery
 
 ```python
