@@ -12,7 +12,7 @@ import ffmpeg
 import sys
 import os
 import argparse
-from typing import List, Tuple, Literal, Union
+from typing import List, Tuple, Literal, Union, Any
 from dataclasses import dataclass
 from enum import Enum
 
@@ -93,7 +93,7 @@ def get_video_duration(video_path: str) -> float:
         video_path: 動画ファイルのパス
         
     Returns:
-        動画の長さ（秒）
+        float: 動画の長さ（秒）
     """
     try:
         probe = ffmpeg.probe(video_path)
@@ -111,7 +111,7 @@ def create_static_frame_background(duration: float) -> 'ffmpeg.Stream':
         duration: 継続時間（秒）
         
     Returns:
-        ffmpegのカラーストリーム
+        'ffmpeg.Stream': ffmpegのカラーストリーム
     """
     color_filter = f"color=black:size={DEFAULT_VIDEO_WIDTH}x{DEFAULT_VIDEO_HEIGHT}:duration={duration}:rate={DEFAULT_FPS}"
     return ffmpeg.input(color_filter, f='lavfi')
@@ -126,7 +126,7 @@ def extract_frame(video_path: str, timestamp: float, duration: float = FRAME_DUR
         duration: フレームの継続時間（秒）
         
     Returns:
-        抽出されたフレームのストリーム
+        'ffmpeg.Stream': 抽出されたフレームのストリーム
     """
     return ffmpeg.input(video_path, ss=timestamp, t=duration).video.filter('scale', DEFAULT_VIDEO_WIDTH, DEFAULT_VIDEO_HEIGHT)
 
@@ -141,7 +141,7 @@ def create_crossfade_segment(video1: str, video2: str, video1_duration: float, f
         fade_duration: フェイド時間（秒）
         
     Returns:
-        クロスフェイドセグメントのストリーム
+        'ffmpeg.Stream': クロスフェイドセグメントのストリーム
     """
     # 前動画の最後のフレームを静止画として作成
     last_frame_bg = create_static_frame_background(fade_duration)
@@ -196,7 +196,7 @@ def concatenate_videos_advanced(sequence: List[Union[VideoSegment, Transition]],
     
     Args:
         sequence: 動画セグメントとトランジションのリスト
-        output: 出力動画ファイルのパス
+        output_path: 出力動画ファイルのパス
     """
     
     # シーケンス検証
@@ -302,7 +302,7 @@ def parse_crossfade_string(crossfade_str: str) -> List[Transition]:
         crossfade_str: "1.0:no_increase,1.5:increase" 形式の文字列
         
     Returns:
-        Transitionオブジェクトのリスト
+        List[Transition]: Transitionオブジェクトのリスト
     """
     if not crossfade_str:
         return []
@@ -341,7 +341,7 @@ def build_sequence_from_args(videos: List[str], transitions: List[Transition]) -
         transitions: トランジションのリスト
         
     Returns:
-        動画セグメントとトランジションの交互シーケンス
+        List[Union[VideoSegment, Transition]]: 動画セグメントとトランジションの交互シーケンス
     """
     sequence = []
     
@@ -421,8 +421,8 @@ def create_crossfade_video(
     output_path: str,
     effect: CrossfadeEffect = CrossfadeEffect.FADE,
     output_mode: CrossfadeOutputMode = CrossfadeOutputMode.FADE_ONLY,
-    custom_duration: float = None
-) -> dict:
+    custom_duration: float | None = None
+) -> dict[str, Any]:
     """2つの動画間のクロスフェード動画を生成する
     
     Args:

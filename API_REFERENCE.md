@@ -151,6 +151,13 @@ class VideoInfo:
     duration: float
     width: int
     height: int
+            fps: Frames per second
+        size_mb: File size in megabytes
+    """
+    path: str
+    duration: float
+    width: int
+    height: int
     fps: float
     size_mb: float
 ```
@@ -198,11 +205,12 @@ def movie(video_path: str) -> DeferredVideoSequence:
 - `video_path` (str): 追加する動画ファイルのパス。
 - `duration` (float): トランジションの時間（秒）。デフォルトは1.0秒。
 - `effect` (CrossfadeEffect): 使用するトランジション効果。デフォルトは `CrossfadeEffect.FADE`。
+- `mode` (TransitionMode): トランジションのモード（増加あり/なし）。デフォルトは `TransitionMode.CROSSFADE_INCREASE`。
 
 **Returns:**
 - `DeferredVideoSequence`: メソッドチェーンのための自身のインスタンス。
 
-##### `execute(self, output_path: str, quiet: bool = False) -> ExecutionResult`
+##### `execute(self, output_path: str, quiet: bool = False) -> dict[str, Any]`
 
 定義されたシーケンスに基づいて動画連結処理を実行します。
 
@@ -521,11 +529,9 @@ class Transition:
     Attributes:
         duration: Transition duration in seconds
         mode: Transition mode
-        effect: Crossfade effect (for crossfade transitions)
     """
     duration: float
     mode: TransitionMode
-    effect: CrossfadeEffect | None = None
 ```
 
 ## Usage Patterns

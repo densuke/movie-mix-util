@@ -25,6 +25,7 @@ from advanced_video_concatenator import (
     DEFAULT_VIDEO_CODEC,
     DEFAULT_PIXEL_FORMAT,
     get_video_duration,
+    TransitionMode,
 )
 
 
@@ -55,7 +56,8 @@ class DeferredVideoSequence:
         self,
         video_path: str,
         duration: float = 1.0,
-        effect: CrossfadeEffect = CrossfadeEffect.FADE
+        effect: CrossfadeEffect = CrossfadeEffect.FADE,
+        mode: TransitionMode = TransitionMode.CROSSFADE_INCREASE
     ) -> DeferredVideoSequence:
         """
         シーケンスに新しい動画をトランジション付きで追加する。
@@ -64,6 +66,7 @@ class DeferredVideoSequence:
             video_path (str): 追加する動画ファイルのパス。
             duration (float): トランジションの時間（秒）。
             effect (CrossfadeEffect): 使用するトランジション効果。
+            mode (TransitionMode): トランジションのモード（増加あり/なし）。
 
         Returns:
             DeferredVideoSequence: メソッドチェーンのための自身のインスタンス。
@@ -74,7 +77,7 @@ class DeferredVideoSequence:
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"動画ファイルが見つかりません: {video_path}")
             
-        self._operations.append(('transition', duration, effect))
+        self._operations.append(('transition', duration, effect, mode))
         self._operations.append(('add_video', video_path))
         return self
 
@@ -97,35 +100,63 @@ class DeferredVideoSequence:
         # 最初のストリーム
         current_video_path = video_ops[0][1]
         processed_video = ffmpeg.input(current_video_path).video
-        processed_audio = ffmpeg.input(current_video_path).audio
+        
+        # オーディオストリームの有無をチェック
+        try:
+            probe = ffmpeg.probe(current_video_path)
+            if any(s['codec_type'] == 'audio' for s in probe['streams']):
+                processed_audio = ffmpeg.input(current_video_path).audio
+            else:
+                processed_audio = None
+        except ffmpeg.Error:
+            processed_audio = None
         
         total_duration = get_video_duration(current_video_path)
 
         for i, next_video_op in enumerate(video_ops[1:]):
             next_video_path = next_video_op[1]
             transition = transition_ops[i]
-            _, duration, effect = transition
+            _, duration, effect, mode = transition
 
             next_video_stream = ffmpeg.input(next_video_path)
             next_video_duration = get_video_duration(next_video_path)
 
             # ビデオのxfade
+            xfade_offset = 0.0
+            if mode == TransitionMode.CROSSFADE_NO_INCREASE:
+                xfade_offset = total_duration - duration
+            elif mode == TransitionMode.CROSSFADE_INCREASE:
+                xfade_offset = total_duration
+
             processed_video = ffmpeg.filter(
-                [processed_video, next_video_stream.video],
+                [processed_video.filter('fps', fps=DEFAULT_FPS), next_video_stream.video.filter('fps', fps=DEFAULT_FPS)],
                 'xfade',
                 transition=effect.value,
                 duration=duration,
-                offset=total_duration - duration
-            ).filter('fps', fps=DEFAULT_FPS)
+                offset=xfade_offset
+            )
             
             # 音声のacrossfade
-            processed_audio = ffmpeg.filter(
-                [processed_audio, next_video_stream.audio],
-                'acrossfade',
-                d=duration
-            )
+            if processed_audio:
+                try:
+                    next_video_probe = ffmpeg.probe(next_video_path)
+                    if any(s['codec_type'] == 'audio' for s in next_video_probe['streams']):
+                        processed_audio = ffmpeg.filter(
+                            [processed_audio, next_video_stream.audio],
+                            'acrossfade',
+                            d=duration
+                        )
+                    else:
+                        # 次の動画にオーディオがない場合、現在のオーディオストリームをそのまま維持
+                        pass
+                except ffmpeg.Error:
+                    # 次の動画のオーディオプロファイルに失敗した場合、現在のオーディオストリームをそのまま維持
+                    pass
 
-            total_duration += next_video_duration - duration
+            if mode == TransitionMode.CROSSFADE_NO_INCREASE:
+                total_duration += next_video_duration - duration
+            elif mode == TransitionMode.CROSSFADE_INCREASE:
+                total_duration += next_video_duration
 
         print(f"出力ファイル: {output_path}")
         
@@ -133,9 +164,14 @@ class DeferredVideoSequence:
             # ffmpegの実行可能ファイルのパスを環境変数から取得、なければデフォルト
             ffmpeg_path = os.getenv('FFMPEG_PATH', 'ffmpeg')
 
+            if processed_audio:
+                output_args = [processed_video, processed_audio, output_path]
+            else:
+                output_args = [processed_video, output_path]
+
             (
                 ffmpeg
-                .output(processed_video, processed_audio, output_path,
+                .output(*output_args,
                         vcodec=DEFAULT_VIDEO_CODEC,
                         pix_fmt=DEFAULT_PIXEL_FORMAT,
                         r=DEFAULT_FPS)
@@ -215,13 +251,13 @@ if __name__ == '__main__':
         # 実行
         result = sequence.execute(output_file)
         
-        print("
---- 処理結果 ---")
+        print("""
+--- 処理結果 ---""")
         for key, value in result.items():
             print(f"{key}: {value}")
         print("--------------------")
 
     except (FileNotFoundError, ValueError, RuntimeError) as e:
-        print(f"
-エラーが発生しました: {e}")
+        print(f"""
+エラーが発生しました: {e}""")
 

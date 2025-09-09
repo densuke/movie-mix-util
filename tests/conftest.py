@@ -4,6 +4,7 @@ import pytest
 import os
 import tempfile
 import shutil
+from unittest.mock import patch
 from pathlib import Path
 import ffmpeg
 
@@ -17,13 +18,13 @@ def samples_dir():
 @pytest.fixture
 def test_video_short(samples_dir):
     """短い動画ファイル（ball_bokeh_02_slyblue.mp4）"""
-    return samples_dir / "ball_bokeh_02_slyblue.mp4"
+    return samples_dir / "02_ball_bokeh_02_slyblue.mp4"
 
 
 @pytest.fixture  
 def test_video_long(samples_dir):
     """長い動画ファイル（13523522_1920_1080_60fps.mp4）"""
-    return samples_dir / "13523522_1920_1080_60fps.mp4"
+    return samples_dir / "01_13523522_1920_1080_60fps.mp4"
 
 
 @pytest.fixture
@@ -114,9 +115,71 @@ def video_properties_checker():
 def sample_video_durations():
     """サンプル動画の長さ情報（テスト用参考値）"""
     return {
-        "ball_bokeh_02_slyblue.mp4": 10.0,  # 概算値、実際に測定して更新
-        "13523522_1920_1080_60fps.mp4": 30.0  # 概算値、実際に測定して更新
+        "02_ball_bokeh_02_slyblue.mp4": 5.0,  # 5秒に短縮したため
+        "01_13523522_1920_1080_60fps.mp4": 5.0  # 5秒に短縮したため
     }
+
+
+@pytest.fixture
+def mock_ffmpeg_probe(monkeypatch, samples_dir):
+    """ffmpeg.probeをモックし、ダミーの動画情報を返す"""
+    def mock_probe(filename):
+        filename_str = str(Path(filename).name)
+        
+        if filename_str == "01_13523522_1920_1080_60fps.mp4":
+            return {
+                "format": {"duration": "5.0", "size": "1000000"},
+                "streams": [
+                    {"codec_type": "video", "width": 1920, "height": 1080, "r_frame_rate": "60/1"}
+                ]
+            }
+        elif filename_str == "02_ball_bokeh_02_slyblue.mp4":
+            return {
+                "format": {"duration": "5.0", "size": "500000"},
+                "streams": [
+                    {"codec_type": "video", "width": 1920, "height": 1080, "r_frame_rate": "30/1"}
+                ]
+            }
+        elif filename_str == "nonexistent_video.mp4":
+            raise ffmpeg.Error(cmd="ffprobe", stdout=b"", stderr=b"No such file or directory")
+        else:
+            # その他の動画ファイルは、実際のprobeを呼び出すか、エラーを発生させる
+            # ここでは、テストで使われる可能性のある他の動画ファイルも考慮
+            # 必要に応じて追加
+            return {
+                "format": {"duration": "10.0", "size": "2000000"},
+                "streams": [
+                    {"codec_type": "video", "width": 1920, "height": 1080, "r_frame_rate": "30/1"}
+                ]
+            }
+
+    monkeypatch.setattr(ffmpeg, "probe", mock_probe)
+
+
+@pytest.fixture
+def mock_ffmpeg_run(monkeypatch):
+    """ffmpeg.runをモックし、実際のFFmpeg実行をスキップする"""
+    def mock_run(stream_spec, cmd="ffmpeg", capture_stdout=False, capture_stderr=False, input=None, quiet=False, overwrite_output=False):
+        # output_pathが指定されていれば、ダミーのファイルを作成
+        output_path = None
+        if isinstance(stream_spec, ffmpeg.nodes.FilterNode):
+            # フィルターノードの場合、出力パスはstream_specには含まれない
+            # ここでは簡易的に、テストで使われるであろうoutput_pathを推測
+            # 実際のコードでは、outputノードからパスを取得する
+            pass
+        elif isinstance(stream_spec, ffmpeg.nodes.OutputNode):
+            output_path = stream_spec.args[-1] # 最後の引数が出力パスと仮定
+        
+        if output_path and not Path(output_path).parent.exists():
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        if output_path:
+            with open(output_path, "w") as f:
+                f.write("dummy video content") # ダミーコンテンツ
+        
+        # 成功したかのように振る舞う
+        return b"", b"" # stdout, stderr
+
+    monkeypatch.setattr(ffmpeg, "run", mock_run)
 
 
 @pytest.fixture
