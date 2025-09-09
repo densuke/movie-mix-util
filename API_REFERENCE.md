@@ -155,6 +155,85 @@ class VideoInfo:
     size_mb: float
 ```
 
+### DeferredVideoSequence
+
+遅延実行モデルで動画連結を構築・実行するクラス。
+
+メソッドチェーンで連結処理を定義し、最後に `execute()` を呼び出すことで、単一のFFmpegプロセスで効率的に処理を実行します。
+
+**このクラスは `movie()` ファクトリ関数を通じて使用することが推奨されます。**
+
+```python
+class DeferredVideoSequence:
+    """
+    動画連結の遅延実行を管理するクラス。
+    """
+```
+
+#### ファクトリ関数 `movie()`
+
+```python
+def movie(video_path: str) -> DeferredVideoSequence:
+    """
+    遅延実行シーケンスを開始するためのファクトリ関数。
+
+    Args:
+        video_path (str): 最初の動画ファイルのパス。
+
+    Returns:
+        DeferredVideoSequence: 新しいシーケンスオブジェクト。
+    
+    Example:
+        >>> sequence = movie("intro.mp4")
+    """
+```
+
+#### メソッド
+
+##### `append(self, video_path: str, duration: float = 1.0, effect: CrossfadeEffect = CrossfadeEffect.FADE) -> DeferredVideoSequence`
+
+シーケンスに新しい動画をトランジション付きで追加します。
+
+**Parameters:**
+- `video_path` (str): 追加する動画ファイルのパス。
+- `duration` (float): トランジションの時間（秒）。デフォルトは1.0秒。
+- `effect` (CrossfadeEffect): 使用するトランジション効果。デフォルトは `CrossfadeEffect.FADE`。
+
+**Returns:**
+- `DeferredVideoSequence`: メソッドチェーンのための自身のインスタンス。
+
+##### `execute(self, output_path: str, quiet: bool = False) -> ExecutionResult`
+
+定義されたシーケンスに基づいて動画連結処理を実行します。
+
+**Parameters:**
+- `output_path` (str): 出力する動画ファイルのパス。
+- `quiet` (bool): FFmpegのログ出力を抑制するかどうか。デフォルトはFalse。
+
+**Returns:**
+- `ExecutionResult` (TypedDict): 処理結果の詳細。
+    - `output_path` (str): 出力ファイルパス。
+    - `duration` (float): 生成された動画の実際の長さ（秒）。
+    - `file_size_mb` (float): ファイルサイズ（MB）。
+
+**Raises:**
+- `RuntimeError`: FFmpegの実行に失敗した場合。
+- `ValueError`: シーケンスに動画が1つしか定義されていない場合。
+
+**Example:**
+```python
+from deferred_concat import movie, CrossfadeEffect
+
+result = (
+    movie("video1.mp4")
+    .append("video2.mp4", duration=2.0, effect=CrossfadeEffect.DISSOLVE)
+    .append("video3.mp4", duration=1.5, effect=CrossfadeEffect.WIPELEFT)
+    .execute("final_video.mp4")
+)
+
+print(f"動画が正常に作成されました: {result['output_path']}")
+```
+
 ## Enumerations
 
 ### TransitionMode
