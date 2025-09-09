@@ -62,6 +62,36 @@ def test_dry_run_mixed(fake_videos, tmp_path):
     assert result["items"][0]["type"] == "clip"
     assert result["items"][1]["type"] == "transition"
 
+
+@pytest.mark.requires_ffmpeg
+def test_execute_simple_chain(samples_dir, tmp_path):
+    a = samples_dir / "ball_bokeh_02_slyblue.mp4"
+    b = samples_dir / "13523522_1920_1080_60fps.mp4"
+    out = tmp_path / "exec_out.mp4"
+    plan = (VideoConcatPlan()
+        .append(str(a))
+        .simple()
+        .append(str(b))
+        .output(str(out)))
+    info = plan.execute()
+    assert out.exists()
+    assert info["final_duration"] > 0
+
+
+@pytest.mark.requires_ffmpeg
+def test_execute_crossfade_no_increase(samples_dir, tmp_path):
+    a = samples_dir / "ball_bokeh_02_slyblue.mp4"
+    b = samples_dir / "13523522_1920_1080_60fps.mp4"
+    out = tmp_path / "exec_xfade_no_inc.mp4"
+    plan = (VideoConcatPlan()
+        .append(str(a))
+        .crossfade(1.0, TransitionMode.CROSSFADE_NO_INCREASE)
+        .append(str(b))
+        .output(str(out)))
+    info = plan.execute()
+    assert out.exists()
+    assert abs(info["planned_duration"] - info["final_duration"]) < 3.0  # tolerance for approximation
+
 def test_requires_output(fake_videos):
     plan = VideoConcatPlan().append(str(fake_videos[0]))
     with pytest.raises(ValueError):

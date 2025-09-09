@@ -120,7 +120,38 @@ class VideoConcatPlan:
 
     # Placeholder for future actual execution
     def execute(self) -> dict:
-        raise NotImplementedError("Actual ffmpeg execution not implemented yet. Use dry_run().")
+        # First freeze to validate & fill durations
+        self._freeze()
+        # Build legacy sequence objects for reuse of existing implementation
+        try:  # local import to avoid heavy cost if only dry_run used
+            from advanced_video_concatenator import (
+                VideoSegment as LegacyVideoSegment,
+                Transition as LegacyTransition,
+                concatenate_videos_advanced as legacy_concat,
+            )
+        except Exception as e:  # pragma: no cover
+            raise RuntimeError(f"既存連結機能のインポートに失敗しました: {e}")
+
+        legacy_sequence: List[object] = []
+        for it in self._items:
+            if isinstance(it, _VideoClip):
+                legacy_sequence.append(LegacyVideoSegment(it.path))
+            elif isinstance(it, _TransitionSpec):
+                legacy_sequence.append(LegacyTransition(it.mode, it.duration))
+
+        # Execute using existing advanced pipeline (single ffmpeg run)
+        legacy_concat(legacy_sequence, self._output_path)  # type: ignore[arg-type]
+
+        # Probe final duration
+        final_duration = _probe_duration(self._output_path)
+        timeline = self._compute_timeline()
+        return {
+            "output": self._output_path,
+            "final_duration": final_duration,
+            "planned_duration": timeline["total_duration"],
+            "items": [self._describe_item(i) for i in self._items],
+            "legacy_path": True,
+        }
 
     # ------------------ Internals ------------------
     def _assert_building(self) -> None:
