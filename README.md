@@ -106,6 +106,25 @@ result = create_crossfade_video(
 )
 ```
 
+### Deferred Execution Model (遅延実行モデル)
+
+For more complex concatenations, the deferred execution model provides a powerful and efficient way to build your video sequence. This approach constructs the entire FFmpeg filter graph in memory and executes it as a single command, minimizing overhead.
+
+```python
+from deferred_concat import movie, CrossfadeEffect
+
+# Build and execute a sequence in a single chain
+result = (
+    movie("intro.mp4")
+    .append("scene1.mp4", duration=2.0, effect=CrossfadeEffect.DISSOLVE)
+    .append("scene2.mp4", duration=1.5, effect=CrossfadeEffect.WIPELEFT)
+    .append("outro.mp4", duration=3.0, effect=CrossfadeEffect.FADE)
+    .execute("final_movie_deferred.mp4")
+)
+
+print(f"Successfully created video: {result['output_path']}")
+```
+
 ## Transition Modes
 
 | Mode | Description | Duration Calculation |
