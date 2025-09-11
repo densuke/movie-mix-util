@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 # 既存の実装をインポート
-from advanced_video_concatenator import (
+from .advanced_video_concatenator import (
     TransitionMode,
     VideoSegment, 
     Transition,
