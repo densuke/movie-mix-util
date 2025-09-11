@@ -173,7 +173,7 @@ class VideoProcessor:
                            background_video: str,
                            overlay_image: str, 
                            output_path: str,
-                           duration: int = 30) -> VideoInfo:
+                           duration: float = 30.0) -> VideoInfo:
         """動画と画像をミックスして新しい動画を生成する
         
         背景動画の上に画像をオーバーレイして、指定した長さの動画を生成する。
@@ -550,7 +550,7 @@ def quick_concatenate(video_paths: list[str],
 def quick_mix(background_video: str,
               overlay_image: str, 
               output_path: str,
-              duration: int = 30) -> VideoInfo:
+              duration: float = 30.0) -> VideoInfo:
     """動画と画像を素早くミックスする便利関数
     
     背景動画の上に画像をオーバーレイして、指定した長さの動画を生成する。
