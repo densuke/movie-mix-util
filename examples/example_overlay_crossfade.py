@@ -1,5 +1,4 @@
-from deferred_concat import movie
-from advanced_video_concatenator import CrossfadeEffect, TransitionMode
+from movie_mix_util import movie, CrossfadeEffect, TransitionMode
 
 def main() -> None:
     """

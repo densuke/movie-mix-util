@@ -13,11 +13,8 @@ import os
 import sys
 from typing import List, Tuple, Literal, Union, Any
 
-# プロジェクトルートからのインポートを可能にする
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 # 既存の定義をインポート
-from advanced_video_concatenator import (
+from .advanced_video_concatenator import (
     CrossfadeEffect,
     DEFAULT_VIDEO_WIDTH,
     DEFAULT_VIDEO_HEIGHT,
