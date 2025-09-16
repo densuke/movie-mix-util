@@ -209,6 +209,32 @@ All exceptions inherit from `VideoProcessingError` for easy catching.
 - Parallel processing where possible
 - Optimized for production workloads
 
+## Hardware Acceleration
+
+`movie-mix-util` automatically attempts to utilize hardware acceleration for video encoding and decoding when available on your system. This can significantly improve performance.
+
+### Supported Hardware Accelerators
+
+The library checks for and prioritizes hardware accelerators in the following order (depending on your OS and FFmpeg build):
+
+*   **macOS**: VideoToolbox (`h264_videotoolbox`)
+*   **Windows**: NVIDIA NVENC (`h264_nvenc`), Intel Quick Sync Video (QSV) (`h264_qsv`)
+*   **Linux**: NVIDIA NVENC (`h264_nvenc`), Intel QSV (`h264_qsv`), VAAPI (`h264_vaapi`)
+
+If no supported hardware accelerator is found or available, the library will fall back to software encoding (`libx264`).
+
+### Disabling Hardware Acceleration
+
+You can explicitly disable hardware acceleration by setting the environment variable `MOVIE_MIX_DISABLE_HWACCEL` to `1`:
+
+```bash
+export MOVIE_MIX_DISABLE_HWACCEL=1
+# Or on Windows
+set MOVIE_MIX_DISABLE_HWACCEL=1
+```
+
+This is useful for debugging or if you encounter issues with hardware acceleration on your system.
+
 ## Contributing
 
 1. Fork the repository
