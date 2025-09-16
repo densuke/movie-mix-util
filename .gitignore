@@ -107,6 +107,8 @@ frame_overlap_test.py
 # ---------------------------
 # Files intentionally kept in repo
 # ---------------------------
-# Do NOT ignore: pyproject.toml, uv.lock, samples/, tests/, and tracked outputs
+# Do NOT ignore: pyproject.toml, samples/, tests/, and tracked outputs
 # If you add other generated files that should be committed, list them explicitly above or
 # remove them from this file when you intend to track them.
+
+uv.lock
