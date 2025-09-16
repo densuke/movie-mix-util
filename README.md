@@ -36,7 +36,8 @@ uv pip install git+https://github.com/densuke/movie-mix-util.git
 
 # For local development with uv (editable install)
 # From your project directory, assuming movie-mix-util is a sibling directory
-uv pip install -e git+file:///path/to/your/local/movie-mix-util/repository
+# Replace /path/to/your/local/movie-mix-util/repository with the actual path to your local clone
+uv pip install -e git+file:///home/youruser/dev/movie-mix-util
 
 # For development
 git clone https://github.com/densuke/movie-mix-util.git
