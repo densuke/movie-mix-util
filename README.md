@@ -17,7 +17,7 @@ A comprehensive Python library for video processing, composition, and concatenat
 ## Installation
 
 ### Requirements
-- Python 3.12+
+- Python 3.11+
 - FFmpeg (required for video processing)
 
 ```bash
@@ -31,6 +31,13 @@ sudo apt install ffmpeg
 # Install movie-mix-util
 pip install git+https://github.com/densuke/movie-mix-util.git
 
+# Or using uv
+uv pip install git+https://github.com/densuke/movie-mix-util.git
+
+# For local development with uv (editable install)
+# From your project directory, assuming movie-mix-util is a sibling directory
+uv pip install -e git+file:///path/to/your/local/movie-mix-util/repository
+
 # For development
 git clone https://github.com/densuke/movie-mix-util.git
 cd movie-mix-util
@@ -38,6 +45,18 @@ uv sync --dev
 ```
 
 ## Quick Start
+
+### Running the cat_movies.py Example
+
+To run the `cat_movies.py` example located in the `examples/` directory:
+
+1.  Ensure you have installed `movie-mix-util` in editable mode for local development (as described above).
+2.  Navigate to your project directory (e.g., `cat-movie-example`).
+3.  Make sure the necessary video files (e.g., `samples/02_ball_bokeh_02_slyblue.mp4`) are available in the expected paths relative to `cat_movies.py`.
+4.  Execute the script:
+    ```bash
+    uv run examples/cat_movies.py
+    ```
 
 ### Basic Video Concatenation
 
