@@ -95,13 +95,19 @@ class DeferredVideoSequence:
 
         # 最初のストリーム
         current_video_path = video_ops[0][1]
-        processed_video = ffmpeg.input(current_video_path, hwaccel=DEFAULT_HWACCEL).video
+        if DEFAULT_HWACCEL:
+            processed_video = ffmpeg.input(current_video_path, hwaccel=DEFAULT_HWACCEL).video
+        else:
+            processed_video = ffmpeg.input(current_video_path).video
         
         # オーディオストリームの有無をチェック
         try:
             probe = ffmpeg.probe(current_video_path)
             if any(s['codec_type'] == 'audio' for s in probe['streams']):
-                processed_audio = ffmpeg.input(current_video_path, hwaccel=DEFAULT_HWACCEL).audio
+                if DEFAULT_HWACCEL:
+                    processed_audio = ffmpeg.input(current_video_path, hwaccel=DEFAULT_HWACCEL).audio
+                else:
+                    processed_audio = ffmpeg.input(current_video_path).audio
             else:
                 processed_audio = None
         except ffmpeg.Error:
@@ -114,7 +120,10 @@ class DeferredVideoSequence:
             transition = transition_ops[i]
             _, duration, effect, mode = transition
 
-            next_video_stream = ffmpeg.input(next_video_path, hwaccel=DEFAULT_HWACCEL)
+            if DEFAULT_HWACCEL:
+                next_video_stream = ffmpeg.input(next_video_path, hwaccel=DEFAULT_HWACCEL)
+            else:
+                next_video_stream = ffmpeg.input(next_video_path)
             next_video_duration = get_video_duration(next_video_path)
 
             # ビデオのxfade
@@ -220,37 +229,118 @@ class DeferredVideoSequence:
                     'profile:v': 'high'
                 })
 
-            try:
-                (
+            def _try_hardware_accelerated():
+                """ハードウェアアクセラレーション版を試行"""
+                cmd = (
                     ffmpeg
                     .output(*output_args, **output_params)
                     .overwrite_output()
-                    .run(cmd=ffmpeg_path, quiet=quiet)
                 )
-            except ffmpeg.Error as hw_error:
-                # ハードウェアエンコーダーが失敗した場合、ソフトウェアエンコーダーにフォールバック
-                if DEFAULT_VIDEO_CODEC != 'libx264':
-                    print(f"⚠️ ハードウェアエンコーダー({DEFAULT_VIDEO_CODEC})が失敗しました。ソフトウェアエンコーダーで再試行します。")
+                print(f"🎬 ハードウェアアクセラレーション({DEFAULT_VIDEO_CODEC})で処理開始...")
+                cmd.run(cmd=ffmpeg_path, quiet=quiet)
+            
+            def _try_software_fallback(error_msg: str = ""):
+                """ソフトウェアフォールバック版を試行"""
+                print(f"⚠️ ハードウェア処理が失敗しました。ソフトウェアエンコーダーで再処理します。")
+                if error_msg:
+                    print(f"エラー詳細: {error_msg[:200]}...")
+                
+                # ソフトウェア版のストリーム再構築
+                current_video_path = video_ops[0][1]
+                sw_processed_video = ffmpeg.input(current_video_path).video
+                
+                # オーディオストリームの再構築
+                sw_processed_audio = None
+                try:
+                    probe = ffmpeg.probe(current_video_path)
+                    if any(s['codec_type'] == 'audio' for s in probe['streams']):
+                        sw_processed_audio = ffmpeg.input(current_video_path).audio
+                except ffmpeg.Error:
+                    pass
+                
+                # ビデオ処理の再構築
+                for i, next_video_op in enumerate(video_ops[1:]):
+                    next_video_path = next_video_op[1]
+                    transition = transition_ops[i]
+                    _, duration, effect, mode = transition
+
+                    next_video_stream = ffmpeg.input(next_video_path)
+                    next_video_duration = get_video_duration(next_video_path)
+
+                    # ビデオのxfade
+                    xfade_offset = 0.0
+                    if mode == TransitionMode.CROSSFADE_NO_INCREASE:
+                        xfade_offset = total_duration - duration
+                    elif mode == TransitionMode.CROSSFADE_INCREASE:
+                        xfade_offset = total_duration
+
+                    sw_processed_video = ffmpeg.filter(
+                        [sw_processed_video.filter('fps', fps=DEFAULT_FPS), next_video_stream.video.filter('fps', fps=DEFAULT_FPS)],
+                        'xfade',
+                        transition=effect.value,
+                        duration=duration,
+                        offset=xfade_offset
+                    )
                     
-                    # エラー詳細の出力（デバッグ用）
+                    # 音声のacrossfade
+                    if sw_processed_audio:
+                        try:
+                            next_video_probe = ffmpeg.probe(next_video_path)
+                            if any(s['codec_type'] == 'audio' for s in next_video_probe['streams']):
+                                sw_processed_audio = ffmpeg.filter(
+                                    [sw_processed_audio, next_video_stream.audio],
+                                    'acrossfade',
+                                    d=duration
+                                )
+                        except ffmpeg.Error:
+                            pass
+                
+                # ソフトウェアエンコーダー用の出力設定
+                if sw_processed_audio:
+                    sw_output_args = [sw_processed_video, sw_processed_audio, output_path]
+                else:
+                    sw_output_args = [sw_processed_video, output_path]
+                
+                fallback_params = {
+                    'vcodec': 'libx264',
+                    'pix_fmt': DEFAULT_PIXEL_FORMAT,
+                    'r': DEFAULT_FPS,
+                    'b:v': max_bitrate,  # 元動画のビットレートを維持
+                    'preset': 'slow',  # 品質重視
+                    'profile:v': 'high'
+                }
+                
+                sw_cmd = (
+                    ffmpeg
+                    .output(*sw_output_args, **fallback_params)
+                    .overwrite_output()
+                )
+                print(f"🔧 ソフトウェアエンコーダー(libx264)で処理開始...")
+                sw_cmd.run(cmd=ffmpeg_path, quiet=quiet)
+
+            try:
+                # ハードウェアアクセラレーション有効時の処理
+                if DEFAULT_HWACCEL and DEFAULT_VIDEO_CODEC != 'libx264':
+                    _try_hardware_accelerated()
+                else:
+                    # 最初からソフトウェア処理（環境変数でHWACCEL無効化されている場合）
+                    print(f"🔧 ソフトウェアエンコーダー(libx264)で処理開始...")
+                    # ソフトウェア専用のストリーム再構築（hwaccelパラメータを含まない）
+                    _try_software_fallback("")
+                    
+            except ffmpeg.Error as hw_error:
+                # ハードウェア処理が失敗した場合のフォールバック
+                if DEFAULT_HWACCEL and DEFAULT_VIDEO_CODEC != 'libx264':
+                    # エラー詳細の取得
+                    stderr_text = ""
                     if hasattr(hw_error, 'stderr') and hw_error.stderr:
                         stderr_text = hw_error.stderr.decode('utf-8', errors='ignore') if isinstance(hw_error.stderr, bytes) else str(hw_error.stderr)
-                        print(f"ハードウェアエンコーダーエラー詳細: {stderr_text[:500]}...")
                     
-                    fallback_params = {
-                        'vcodec': 'libx264',
-                        'pix_fmt': DEFAULT_PIXEL_FORMAT,
-                        'r': DEFAULT_FPS,
-                        'b:v': max_bitrate,  # 元動画のビットレートを維持
-                        'preset': 'slow',  # 品質重視
-                        'profile:v': 'high'
-                    }
-                    (
-                        ffmpeg
-                        .output(*output_args, **fallback_params)
-                        .overwrite_output()
-                        .run(cmd=ffmpeg_path, quiet=quiet)
-                    )
+                    try:
+                        _try_software_fallback(stderr_text)
+                    except ffmpeg.Error as sw_error:
+                        # ソフトウェアフォールバックも失敗した場合
+                        raise hw_error
                 else:
                     # すでにソフトウェアエンコーダーの場合は例外を再発生
                     raise hw_error

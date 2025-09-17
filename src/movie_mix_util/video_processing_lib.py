@@ -328,26 +328,78 @@ class VideoProcessor:
             # FFmpegでの処理
             import ffmpeg
             
-            # 背景動画のストリーム作成
-            background = ffmpeg.input(background_video, stream_loop=-1, t=duration, hwaccel=DEFAULT_HWACCEL).video
+            def _try_hardware_mix():
+                """ハードウェアアクセラレーション版でミックス処理"""
+                # 背景動画のストリーム作成
+                if DEFAULT_HWACCEL:
+                    background = ffmpeg.input(background_video, stream_loop=-1, t=duration, hwaccel=DEFAULT_HWACCEL).video
+                else:
+                    background = ffmpeg.input(background_video, stream_loop=-1, t=duration).video
+                
+                # オーバーレイ画像のストリーム作成
+                overlay = ffmpeg.input(overlay_image, loop=1, t=duration).filter('scale', scaled_width, scaled_height)
+                
+                # オーバーレイ合成
+                combined = ffmpeg.overlay(background, overlay, x=x_offset, y=y_offset)
+                
+                # 出力設定
+                out = ffmpeg.output(combined, output_path, 
+                                   vcodec=DEFAULT_VIDEO_CODEC, 
+                                   pix_fmt='yuv420p',
+                                   r=30)
+                
+                # 既存ファイルがあれば上書き
+                out = ffmpeg.overwrite_output(out)
+                
+                # 実行
+                ffmpeg.run(out, quiet=False)
             
-            # オーバーレイ画像のストリーム作成
-            overlay = ffmpeg.input(overlay_image, loop=1, t=duration).filter('scale', scaled_width, scaled_height)
-            
-            # オーバーレイ合成
-            combined = ffmpeg.overlay(background, overlay, x=x_offset, y=y_offset)
-            
-            # 出力設定
-            out = ffmpeg.output(combined, output_path, 
-                               vcodec=DEFAULT_VIDEO_CODEC, 
-                               pix_fmt='yuv420p',
-                               r=30)
-            
-            # 既存ファイルがあれば上書き
-            out = ffmpeg.overwrite_output(out)
-            
-            # 実行
-            ffmpeg.run(out, quiet=False)
+            def _try_software_mix():
+                """ソフトウェアフォールバック版でミックス処理"""
+                print(f"⚠️ ハードウェア処理が失敗しました。ソフトウェアエンコーダーで再処理します。")
+                
+                # 背景動画のストリーム作成（ハードウェアアクセラレーションなし）
+                background = ffmpeg.input(background_video, stream_loop=-1, t=duration).video
+                
+                # オーバーレイ画像のストリーム作成
+                overlay = ffmpeg.input(overlay_image, loop=1, t=duration).filter('scale', scaled_width, scaled_height)
+                
+                # オーバーレイ合成
+                combined = ffmpeg.overlay(background, overlay, x=x_offset, y=y_offset)
+                
+                # 出力設定（ソフトウェアエンコーダー）
+                out = ffmpeg.output(combined, output_path, 
+                                   vcodec='libx264',  # ソフトウェアエンコーダー
+                                   pix_fmt='yuv420p',
+                                   r=30,
+                                   preset='medium')
+                
+                # 既存ファイルがあれば上書き
+                out = ffmpeg.overwrite_output(out)
+                
+                # 実行
+                ffmpeg.run(out, quiet=False)
+
+            try:
+                # ハードウェアアクセラレーション有効時の処理
+                if DEFAULT_HWACCEL and DEFAULT_VIDEO_CODEC != 'libx264':
+                    print(f"🎬 ハードウェアアクセラレーション({DEFAULT_VIDEO_CODEC})でミックス処理開始...")
+                    _try_hardware_mix()
+                else:
+                    print(f"🔧 ソフトウェアエンコーダー(libx264)でミックス処理開始...")
+                    _try_software_mix()
+                    
+            except ffmpeg.Error as hw_error:
+                # ハードウェア処理が失敗した場合のフォールバック
+                if DEFAULT_HWACCEL and DEFAULT_VIDEO_CODEC != 'libx264':
+                    try:
+                        _try_software_mix()
+                    except ffmpeg.Error as sw_error:
+                        # ソフトウェアフォールバックも失敗した場合
+                        raise hw_error
+                else:
+                    # すでにソフトウェアエンコーダーの場合は例外を再発生
+                    raise hw_error
             
             # 結果情報を作成
             import os

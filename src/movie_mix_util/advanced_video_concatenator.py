@@ -230,11 +230,17 @@ def concatenate_videos_advanced(sequence: List[Union[VideoSegment, Transition]],
                     next_item.mode == TransitionMode.CROSSFADE_NO_INCREASE):
                     # 前動画を短縮
                     shortened_duration = current_video_duration - next_item.duration
-                    video_input = ffmpeg.input(item.path, t=shortened_duration, hwaccel=DEFAULT_HWACCEL)
+                    if DEFAULT_HWACCEL:
+                        video_input = ffmpeg.input(item.path, t=shortened_duration, hwaccel=DEFAULT_HWACCEL)
+                    else:
+                        video_input = ffmpeg.input(item.path, t=shortened_duration)
                     print(f"  短縮: {current_video_duration:.1f}s → {shortened_duration:.1f}s")
                 else:
                     # そのまま
-                    video_input = ffmpeg.input(item.path, hwaccel=DEFAULT_HWACCEL)
+                    if DEFAULT_HWACCEL:
+                        video_input = ffmpeg.input(item.path, hwaccel=DEFAULT_HWACCEL)
+                    else:
+                        video_input = ffmpeg.input(item.path)
                     print(f"  長さ: {current_video_duration:.1f}s")
                 
                 segments_list.append(video_input.video)
@@ -413,6 +419,214 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _try_hardware_accelerated_crossfade(
+    video1_path: str,
+    video2_path: str,
+    output_path: str,
+    effect: CrossfadeEffect,
+    fade_duration: float,
+    output_mode: CrossfadeOutputMode,
+    custom_duration: float,
+    duration1: float,
+    duration2: float
+) -> Tuple[Any, float]:
+    """
+    ハードウェアアクセラレーションを使用してクロスフェード処理を試行
+    
+    Returns:
+        Tuple[stream, output_duration]: 処理済みストリームと出力時間
+    """
+    print("🚀 ハードウェアアクセラレーション処理を開始...")
+    
+    # 入力ストリーム準備（ハードウェアアクセラレーション）
+    input1 = ffmpeg.input(video1_path, hwaccel=DEFAULT_HWACCEL)
+    input2 = ffmpeg.input(video2_path, hwaccel=DEFAULT_HWACCEL)
+    
+    # 出力モードに応じた処理
+    if output_mode == CrossfadeOutputMode.FADE_ONLY:
+        # フェード部分のみ出力
+        video1_start = duration1 - fade_duration
+        v1_trimmed = (input1.video
+                     .filter('trim', start=video1_start, duration=fade_duration)
+                     .filter('setpts', 'PTS-STARTPTS')
+                     .filter('fps', fps=DEFAULT_FPS))
+        
+        v2_trimmed = (input2.video
+                     .filter('trim', duration=fade_duration)
+                     .filter('setpts', 'PTS-STARTPTS')
+                     .filter('fps', fps=DEFAULT_FPS))
+        
+        crossfaded = ffmpeg.filter([v1_trimmed, v2_trimmed], 'xfade', 
+                                 transition=effect.value, 
+                                 duration=fade_duration,
+                                 offset=0)
+        output_duration = fade_duration
+        
+    elif output_mode == CrossfadeOutputMode.FULL_SEQUENCE:
+        # 完全版出力（動画1 + フェード + 動画2）
+        v1_before = (input1.video
+                    .filter('trim', duration=duration1-fade_duration)
+                    .filter('setpts', 'PTS-STARTPTS')
+                    .filter('fps', fps=DEFAULT_FPS))
+        
+        v1_fade = (input1.video
+                  .filter('trim', start=duration1-fade_duration, duration=fade_duration)
+                  .filter('setpts', 'PTS-STARTPTS')
+                  .filter('fps', fps=DEFAULT_FPS))
+        v2_fade = (input2.video
+                  .filter('trim', duration=fade_duration)
+                  .filter('setpts', 'PTS-STARTPTS')
+                  .filter('fps', fps=DEFAULT_FPS))
+        fade_part = ffmpeg.filter([v1_fade, v2_fade], 'xfade',
+                                transition=effect.value,
+                                duration=fade_duration,
+                                offset=0)
+        
+        v2_after = (input2.video
+                   .filter('trim', start=fade_duration)
+                   .filter('setpts', 'PTS-STARTPTS')
+                   .filter('fps', fps=DEFAULT_FPS))
+        
+        crossfaded = ffmpeg.concat(v1_before, fade_part, v2_after, v=1, a=0)
+        output_duration = duration1 + duration2 - fade_duration
+        
+    elif output_mode == CrossfadeOutputMode.CUSTOM:
+        # カスタム時間指定
+        v1_part = (input1.video
+                  .filter('trim', duration=min(custom_duration/2 + fade_duration/2, duration1))
+                  .filter('setpts', 'PTS-STARTPTS')
+                  .filter('fps', fps=DEFAULT_FPS))
+        v2_part = (input2.video
+                  .filter('trim', duration=min(custom_duration/2 + fade_duration/2, duration2))
+                  .filter('setpts', 'PTS-STARTPTS')
+                  .filter('fps', fps=DEFAULT_FPS))
+        
+        crossfaded = ffmpeg.filter([v1_part, v2_part], 'xfade',
+                                 transition=effect.value,
+                                 duration=fade_duration,
+                                 offset=custom_duration/2 - fade_duration/2)
+        output_duration = custom_duration
+    
+    # 出力設定（ハードウェアエンコーダー）
+    out = ffmpeg.output(crossfaded, output_path,
+                      vcodec=DEFAULT_VIDEO_CODEC,
+                      pix_fmt=DEFAULT_PIXEL_FORMAT,
+                      r=DEFAULT_FPS)
+    
+    # 既存ファイル上書き
+    out = ffmpeg.overwrite_output(out)
+    
+    # 実行
+    ffmpeg.run(out, quiet=False)
+    print("✅ ハードウェアアクセラレーション処理完了")
+    
+    return crossfaded, output_duration
+
+
+def _try_software_fallback_crossfade(
+    video1_path: str,
+    video2_path: str,
+    output_path: str,
+    effect: CrossfadeEffect,
+    fade_duration: float,
+    output_mode: CrossfadeOutputMode,
+    custom_duration: float,
+    duration1: float,
+    duration2: float
+) -> Tuple[Any, float]:
+    """
+    ソフトウェア処理でクロスフェード処理を実行
+    
+    Returns:
+        Tuple[stream, output_duration]: 処理済みストリームと出力時間
+    """
+    print("🔄 ソフトウェア処理にフォールバック...")
+    
+    # 入力ストリーム準備（ソフトウェア処理）
+    input1 = ffmpeg.input(video1_path)
+    input2 = ffmpeg.input(video2_path)
+    
+    # 出力モードに応じた処理
+    if output_mode == CrossfadeOutputMode.FADE_ONLY:
+        # フェード部分のみ出力
+        video1_start = duration1 - fade_duration
+        v1_trimmed = (input1.video
+                     .filter('trim', start=video1_start, duration=fade_duration)
+                     .filter('setpts', 'PTS-STARTPTS')
+                     .filter('fps', fps=DEFAULT_FPS))
+        
+        v2_trimmed = (input2.video
+                     .filter('trim', duration=fade_duration)
+                     .filter('setpts', 'PTS-STARTPTS')
+                     .filter('fps', fps=DEFAULT_FPS))
+        
+        crossfaded = ffmpeg.filter([v1_trimmed, v2_trimmed], 'xfade', 
+                                 transition=effect.value, 
+                                 duration=fade_duration,
+                                 offset=0)
+        output_duration = fade_duration
+        
+    elif output_mode == CrossfadeOutputMode.FULL_SEQUENCE:
+        # 完全版出力（動画1 + フェード + 動画2）
+        v1_before = (input1.video
+                    .filter('trim', duration=duration1-fade_duration)
+                    .filter('setpts', 'PTS-STARTPTS')
+                    .filter('fps', fps=DEFAULT_FPS))
+        
+        v1_fade = (input1.video
+                  .filter('trim', start=duration1-fade_duration, duration=fade_duration)
+                  .filter('setpts', 'PTS-STARTPTS')
+                  .filter('fps', fps=DEFAULT_FPS))
+        v2_fade = (input2.video
+                  .filter('trim', duration=fade_duration)
+                  .filter('setpts', 'PTS-STARTPTS')
+                  .filter('fps', fps=DEFAULT_FPS))
+        fade_part = ffmpeg.filter([v1_fade, v2_fade], 'xfade',
+                                transition=effect.value,
+                                duration=fade_duration,
+                                offset=0)
+        
+        v2_after = (input2.video
+                   .filter('trim', start=fade_duration)
+                   .filter('setpts', 'PTS-STARTPTS')
+                   .filter('fps', fps=DEFAULT_FPS))
+        
+        crossfaded = ffmpeg.concat(v1_before, fade_part, v2_after, v=1, a=0)
+        output_duration = duration1 + duration2 - fade_duration
+        
+    elif output_mode == CrossfadeOutputMode.CUSTOM:
+        # カスタム時間指定
+        v1_part = (input1.video
+                  .filter('trim', duration=min(custom_duration/2 + fade_duration/2, duration1))
+                  .filter('setpts', 'PTS-STARTPTS')
+                  .filter('fps', fps=DEFAULT_FPS))
+        v2_part = (input2.video
+                  .filter('trim', duration=min(custom_duration/2 + fade_duration/2, duration2))
+                  .filter('setpts', 'PTS-STARTPTS')
+                  .filter('fps', fps=DEFAULT_FPS))
+        
+        crossfaded = ffmpeg.filter([v1_part, v2_part], 'xfade',
+                                 transition=effect.value,
+                                 duration=fade_duration,
+                                 offset=custom_duration/2 - fade_duration/2)
+        output_duration = custom_duration
+    
+    # 出力設定（ソフトウェアエンコーダー）
+    out = ffmpeg.output(crossfaded, output_path,
+                      vcodec='libx264',  # ソフトウェアエンコーダー
+                      pix_fmt=DEFAULT_PIXEL_FORMAT,
+                      r=DEFAULT_FPS)
+    
+    # 既存ファイル上書き
+    out = ffmpeg.overwrite_output(out)
+    
+    # 実行
+    ffmpeg.run(out, quiet=False)
+    print("✅ ソフトウェア処理完了")
+    
+    return crossfaded, output_duration
+
+
 def create_crossfade_video(
     video1_path: str,
     video2_path: str, 
@@ -463,111 +677,42 @@ def create_crossfade_video(
     print(f"効果: {effect.value}")
     print(f"出力モード: {output_mode.value}")
     
+    output_duration = None
+    processing_mode = "unknown"
+    
     try:
-        # 入力ストリーム準備
-        input1 = ffmpeg.input(video1_path, hwaccel=DEFAULT_HWACCEL)
-        input2 = ffmpeg.input(video2_path, hwaccel=DEFAULT_HWACCEL)
-        
-        # 出力モードに応じた処理
-        if output_mode == CrossfadeOutputMode.FADE_ONLY:
-            # フェード部分のみ出力
-            # 動画1の最後の部分を取得（フレームレート統一）
-            video1_start = duration1 - fade_duration
-            v1_trimmed = (input1.video
-                         .filter('trim', start=video1_start, duration=fade_duration)
-                         .filter('setpts', 'PTS-STARTPTS')
-                         .filter('fps', fps=DEFAULT_FPS))
-            
-            # 動画2の最初の部分を取得（フレームレート統一）
-            v2_trimmed = (input2.video
-                         .filter('trim', duration=fade_duration)
-                         .filter('setpts', 'PTS-STARTPTS')
-                         .filter('fps', fps=DEFAULT_FPS))
-            
-            # クロスフェード適用
-            crossfaded = ffmpeg.filter([v1_trimmed, v2_trimmed], 'xfade', 
-                                     transition=effect.value, 
-                                     duration=fade_duration,
-                                     offset=0)
-            
-            output_duration = fade_duration
-            
-        elif output_mode == CrossfadeOutputMode.FULL_SEQUENCE:
-            # 完全版出力（動画1 + フェード + 動画2）
-            # 動画1の前部分（フレームレート統一）
-            v1_before = (input1.video
-                        .filter('trim', duration=duration1-fade_duration)
-                        .filter('setpts', 'PTS-STARTPTS')
-                        .filter('fps', fps=DEFAULT_FPS))
-            
-            # フェード部分（フレームレート統一）
-            v1_fade = (input1.video
-                      .filter('trim', start=duration1-fade_duration, duration=fade_duration)
-                      .filter('setpts', 'PTS-STARTPTS')
-                      .filter('fps', fps=DEFAULT_FPS))
-            v2_fade = (input2.video
-                      .filter('trim', duration=fade_duration)
-                      .filter('setpts', 'PTS-STARTPTS')
-                      .filter('fps', fps=DEFAULT_FPS))
-            fade_part = ffmpeg.filter([v1_fade, v2_fade], 'xfade',
-                                    transition=effect.value,
-                                    duration=fade_duration,
-                                    offset=0)
-            
-            # 動画2の後部分（フレームレート統一）
-            v2_after = (input2.video
-                       .filter('trim', start=fade_duration)
-                       .filter('setpts', 'PTS-STARTPTS')
-                       .filter('fps', fps=DEFAULT_FPS))
-            
-            # 全体を連結
-            crossfaded = ffmpeg.concat(v1_before, fade_part, v2_after, v=1, a=0)
-            output_duration = duration1 + duration2 - fade_duration
-            
-        elif output_mode == CrossfadeOutputMode.CUSTOM:
-            # カスタム時間指定
-            if custom_duration is None:
-                raise ValueError("CUSTOM モードではcustom_durationの指定が必要です")
-            if custom_duration <= 0:
-                raise ValueError("カスタム時間は0より大きい値である必要があります")
-            
-            # 動画1と動画2をフェード時間で重複させて連結（フレームレート統一）
-            v1_part = (input1.video
-                      .filter('trim', duration=min(custom_duration/2 + fade_duration/2, duration1))
-                      .filter('setpts', 'PTS-STARTPTS')
-                      .filter('fps', fps=DEFAULT_FPS))
-            v2_part = (input2.video
-                      .filter('trim', duration=min(custom_duration/2 + fade_duration/2, duration2))
-                      .filter('setpts', 'PTS-STARTPTS')
-                      .filter('fps', fps=DEFAULT_FPS))
-            
-            crossfaded = ffmpeg.filter([v1_part, v2_part], 'xfade',
-                                     transition=effect.value,
-                                     duration=fade_duration,
-                                     offset=custom_duration/2 - fade_duration/2)
-            
-            output_duration = custom_duration
-            
-        # 出力設定
-        out = ffmpeg.output(crossfaded, output_path,
-                          vcodec=DEFAULT_VIDEO_CODEC,
-                          pix_fmt=DEFAULT_PIXEL_FORMAT,
-                          r=DEFAULT_FPS)
-        
-        # 既存ファイル上書き
-        out = ffmpeg.overwrite_output(out)
-        
-        print(f"出力: {output_path}")
-        print(f"予想時間: {output_duration:.1f}s")
-        
-        # 実行
-        ffmpeg.run(out, quiet=False)
+        # ハードウェアアクセラレーションを試行（環境変数でソフトウェア処理が指定されていない場合）
+        if DEFAULT_HWACCEL:
+            try:
+                _, output_duration = _try_hardware_accelerated_crossfade(
+                    video1_path, video2_path, output_path, effect, fade_duration,
+                    output_mode, custom_duration, duration1, duration2
+                )
+                processing_mode = "hardware"
+            except Exception as hw_error:
+                print(f"⚠️  ハードウェア処理が失敗しました: {hw_error}")
+                print("🔄 ソフトウェア処理にフォールバック中...")
+                # ソフトウェア処理にフォールバック
+                _, output_duration = _try_software_fallback_crossfade(
+                    video1_path, video2_path, output_path, effect, fade_duration,
+                    output_mode, custom_duration, duration1, duration2
+                )
+                processing_mode = "software_fallback"
+        else:
+            # 環境変数でソフトウェア処理が指定されている場合
+            print("🔧 環境変数によりソフトウェア処理を使用")
+            _, output_duration = _try_software_fallback_crossfade(
+                video1_path, video2_path, output_path, effect, fade_duration,
+                output_mode, custom_duration, duration1, duration2
+            )
+            processing_mode = "software_env"
         
         # 実際の出力時間を取得
         actual_duration = get_video_duration(output_path)
         file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
         
         print("✅ クロスフェード動画生成完了!")
+        print(f"  処理モード: {processing_mode}")
         print(f"  実際の長さ: {actual_duration:.2f}s")
         print(f"  ファイルサイズ: {file_size:.1f}MB")
         
@@ -579,7 +724,8 @@ def create_crossfade_video(
             "expected_duration": output_duration,
             "actual_duration": actual_duration,
             "file_size_mb": file_size,
-            "input_videos": [video1_path, video2_path]
+            "input_videos": [video1_path, video2_path],
+            "processing_mode": processing_mode
         }
         
     except ffmpeg.Error as e:
