@@ -1,0 +1,29 @@
+
+=== ハードウェアアクセラレーション調査レポート ===
+プラットフォーム: Darwin (arm64)
+
+=== FFmpeg機能検出結果 ===
+利用可能なエンコーダー: libx264, libx264, h264_videotoolbox, libx265, hevc_videotoolbox
+利用可能なハードウェアアクセラレーション: videotoolbox
+
+=== 推奨設定 ===
+主エンコーダー: h264_videotoolbox
+主ハードウェアアクセラレーション: videotoolbox
+
+=== フォールバックオプション ===
+1. libx264 (hwaccel: なし) - ソフトウェアフォールバック
+
+=== パフォーマンスヒント ===
+• VideoToolboxはApple Siliconで最適化されている
+• プロファイル設定（baseline, main, high）でエンコード品質調整可能
+• リアルタイム設定（-realtime 1）で低遅延エンコード可能
+• macOS 10.13以降でHEVC/H.265対応
+
+=== プラットフォーム固有の注意点 ===
+• アーキテクチャ: arm64
+• VideoToolboxはGPUとMedia Engineを活用
+• Metal Performance Shadersとの連携可能
+
+=== GPU検出結果 ===
+検出されたGPU: Apple M4
+機能: {}
