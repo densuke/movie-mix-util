@@ -157,6 +157,25 @@ class DeferredVideoSequence:
         print(f"出力ファイル: {output_path}")
         
         try:
+            # 入力動画の最高ビットレートを検出
+            max_bitrate = 0
+            for video_op in video_ops:
+                video_path = video_op[1]
+                try:
+                    probe_result = ffmpeg.probe(video_path)
+                    for stream in probe_result['streams']:
+                        if stream['codec_type'] == 'video' and 'bit_rate' in stream:
+                            bitrate = int(stream['bit_rate'])
+                            max_bitrate = max(max_bitrate, bitrate)
+                except:
+                    continue
+            
+            # デフォルトビットレート（検出できない場合）
+            if max_bitrate == 0:
+                max_bitrate = 5000000  # 5Mbps
+            
+            print(f"検出された最高ビットレート: {max_bitrate / 1000000:.1f}Mbps")
+            
             # ffmpegの実行可能ファイルのパスを環境変数から取得、なければデフォルト
             ffmpeg_path = os.getenv('FFMPEG_PATH', 'ffmpeg')
 
@@ -165,15 +184,76 @@ class DeferredVideoSequence:
             else:
                 output_args = [processed_video, output_path]
 
-            (
-                ffmpeg
-                .output(*output_args,
-                        vcodec=DEFAULT_VIDEO_CODEC,
-                        pix_fmt=DEFAULT_PIXEL_FORMAT,
-                        r=DEFAULT_FPS)
-                .overwrite_output()
-                .run(cmd=ffmpeg_path, quiet=quiet)
-            )
+            # エンコーダー別のパラメータ設定（ビットレートベース）
+            output_params = {
+                'vcodec': DEFAULT_VIDEO_CODEC,
+                'pix_fmt': DEFAULT_PIXEL_FORMAT,
+                'r': DEFAULT_FPS,
+                'b:v': max_bitrate  # 元動画の最高ビットレートを維持
+            }
+            
+            # ハードウェアエンコーダー用の追加パラメータ
+            if DEFAULT_VIDEO_CODEC == 'h264_videotoolbox':
+                # VideoToolbox用の元動画品質維持設定
+                output_params.update({
+                    'allow_sw': 1,  # ソフトウェアフォールバック許可
+                    'realtime': 0,   # リアルタイム制約を無効化
+                    'profile:v': 'high',  # プロファイル設定
+                    'level': '4.1'  # レベル設定（1080p対応）
+                })
+            elif DEFAULT_VIDEO_CODEC == 'h264_nvenc':
+                # NVENC用の元動画品質維持設定
+                output_params.update({
+                    'preset': 'slow',  # 品質重視
+                    'profile:v': 'high'
+                })
+            elif DEFAULT_VIDEO_CODEC == 'h264_qsv':
+                # Intel QSV用の元動画品質維持設定
+                output_params.update({
+                    'preset': 'slow',
+                    'profile:v': 'high'
+                })
+            elif DEFAULT_VIDEO_CODEC == 'libx264':
+                # ソフトウェアエンコーダー用の元動画品質維持設定
+                output_params.update({
+                    'preset': 'slow',  # 品質重視
+                    'profile:v': 'high'
+                })
+
+            try:
+                (
+                    ffmpeg
+                    .output(*output_args, **output_params)
+                    .overwrite_output()
+                    .run(cmd=ffmpeg_path, quiet=quiet)
+                )
+            except ffmpeg.Error as hw_error:
+                # ハードウェアエンコーダーが失敗した場合、ソフトウェアエンコーダーにフォールバック
+                if DEFAULT_VIDEO_CODEC != 'libx264':
+                    print(f"⚠️ ハードウェアエンコーダー({DEFAULT_VIDEO_CODEC})が失敗しました。ソフトウェアエンコーダーで再試行します。")
+                    
+                    # エラー詳細の出力（デバッグ用）
+                    if hasattr(hw_error, 'stderr') and hw_error.stderr:
+                        stderr_text = hw_error.stderr.decode('utf-8', errors='ignore') if isinstance(hw_error.stderr, bytes) else str(hw_error.stderr)
+                        print(f"ハードウェアエンコーダーエラー詳細: {stderr_text[:500]}...")
+                    
+                    fallback_params = {
+                        'vcodec': 'libx264',
+                        'pix_fmt': DEFAULT_PIXEL_FORMAT,
+                        'r': DEFAULT_FPS,
+                        'b:v': max_bitrate,  # 元動画のビットレートを維持
+                        'preset': 'slow',  # 品質重視
+                        'profile:v': 'high'
+                    }
+                    (
+                        ffmpeg
+                        .output(*output_args, **fallback_params)
+                        .overwrite_output()
+                        .run(cmd=ffmpeg_path, quiet=quiet)
+                    )
+                else:
+                    # すでにソフトウェアエンコーダーの場合は例外を再発生
+                    raise hw_error
             
             print("✅ 動画連結処理が完了しました。")
             
@@ -187,9 +267,25 @@ class DeferredVideoSequence:
             }
 
         except ffmpeg.Error as e:
-            stderr = e.stderr.decode() if e.stderr else '詳細不明'
-            print(f"FFmpegエラー: {stderr}")
-            raise RuntimeError(f"FFmpegの実行に失敗しました。エラー: {stderr}") from e
+            # エラー詳細の詳細な取得
+            stderr_text = ""
+            stdout_text = ""
+            
+            if hasattr(e, 'stderr') and e.stderr:
+                if isinstance(e.stderr, bytes):
+                    stderr_text = e.stderr.decode('utf-8', errors='ignore')
+                else:
+                    stderr_text = str(e.stderr)
+            
+            if hasattr(e, 'stdout') and e.stdout:
+                if isinstance(e.stdout, bytes):
+                    stdout_text = e.stdout.decode('utf-8', errors='ignore')
+                else:
+                    stdout_text = str(e.stdout)
+            
+            error_detail = f"STDERR: {stderr_text}\nSTDOUT: {stdout_text}" if (stderr_text or stdout_text) else "詳細不明"
+            print(f"FFmpegエラー詳細:\n{error_detail}")
+            raise RuntimeError(f"FFmpegの実行に失敗しました。エラー詳細:\n{error_detail}") from e
 
 
 def movie(video_path: str) -> DeferredVideoSequence:
