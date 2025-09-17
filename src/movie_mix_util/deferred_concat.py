@@ -165,15 +165,73 @@ class DeferredVideoSequence:
             else:
                 output_args = [processed_video, output_path]
 
-            (
-                ffmpeg
-                .output(*output_args,
-                        vcodec=DEFAULT_VIDEO_CODEC,
-                        pix_fmt=DEFAULT_PIXEL_FORMAT,
-                        r=DEFAULT_FPS)
-                .overwrite_output()
-                .run(cmd=ffmpeg_path, quiet=quiet)
-            )
+            # エンコーダー別のパラメータ設定
+            output_params = {
+                'vcodec': DEFAULT_VIDEO_CODEC,
+                'pix_fmt': DEFAULT_PIXEL_FORMAT,
+                'r': DEFAULT_FPS
+            }
+            
+            # ハードウェアエンコーダー用の追加パラメータ
+            if DEFAULT_VIDEO_CODEC == 'h264_videotoolbox':
+                # VideoToolbox用の安定した設定
+                output_params.update({
+                    'q:v': 23,  # 品質設定（18-28が推奨、23はバランス）
+                    'allow_sw': 1,  # ソフトウェアフォールバック許可
+                    'realtime': 0   # リアルタイム制約を無効化
+                })
+            elif DEFAULT_VIDEO_CODEC == 'h264_nvenc':
+                # NVENC用の設定
+                output_params.update({
+                    'cq': 23,
+                    'preset': 'medium'
+                })
+            elif DEFAULT_VIDEO_CODEC == 'h264_qsv':
+                # Intel QSV用の設定
+                output_params.update({
+                    'global_quality': 23,
+                    'preset': 'medium'
+                })
+            elif DEFAULT_VIDEO_CODEC == 'libx264':
+                # ソフトウェアエンコーダー用の設定
+                output_params.update({
+                    'crf': 23,
+                    'preset': 'medium'
+                })
+
+            try:
+                (
+                    ffmpeg
+                    .output(*output_args, **output_params)
+                    .overwrite_output()
+                    .run(cmd=ffmpeg_path, quiet=quiet)
+                )
+            except ffmpeg.Error as hw_error:
+                # ハードウェアエンコーダーが失敗した場合、ソフトウェアエンコーダーにフォールバック
+                if DEFAULT_VIDEO_CODEC != 'libx264':
+                    print(f"⚠️ ハードウェアエンコーダー({DEFAULT_VIDEO_CODEC})が失敗しました。ソフトウェアエンコーダーで再試行します。")
+                    
+                    # エラー詳細の出力（デバッグ用）
+                    if hasattr(hw_error, 'stderr') and hw_error.stderr:
+                        stderr_text = hw_error.stderr.decode('utf-8', errors='ignore') if isinstance(hw_error.stderr, bytes) else str(hw_error.stderr)
+                        print(f"ハードウェアエンコーダーエラー詳細: {stderr_text[:500]}...")
+                    
+                    fallback_params = {
+                        'vcodec': 'libx264',
+                        'pix_fmt': DEFAULT_PIXEL_FORMAT,
+                        'r': DEFAULT_FPS,
+                        'crf': 23,
+                        'preset': 'medium'
+                    }
+                    (
+                        ffmpeg
+                        .output(*output_args, **fallback_params)
+                        .overwrite_output()
+                        .run(cmd=ffmpeg_path, quiet=quiet)
+                    )
+                else:
+                    # すでにソフトウェアエンコーダーの場合は例外を再発生
+                    raise hw_error
             
             print("✅ 動画連結処理が完了しました。")
             
@@ -187,9 +245,25 @@ class DeferredVideoSequence:
             }
 
         except ffmpeg.Error as e:
-            stderr = e.stderr.decode() if e.stderr else '詳細不明'
-            print(f"FFmpegエラー: {stderr}")
-            raise RuntimeError(f"FFmpegの実行に失敗しました。エラー: {stderr}") from e
+            # エラー詳細の詳細な取得
+            stderr_text = ""
+            stdout_text = ""
+            
+            if hasattr(e, 'stderr') and e.stderr:
+                if isinstance(e.stderr, bytes):
+                    stderr_text = e.stderr.decode('utf-8', errors='ignore')
+                else:
+                    stderr_text = str(e.stderr)
+            
+            if hasattr(e, 'stdout') and e.stdout:
+                if isinstance(e.stdout, bytes):
+                    stdout_text = e.stdout.decode('utf-8', errors='ignore')
+                else:
+                    stdout_text = str(e.stdout)
+            
+            error_detail = f"STDERR: {stderr_text}\nSTDOUT: {stdout_text}" if (stderr_text or stdout_text) else "詳細不明"
+            print(f"FFmpegエラー詳細:\n{error_detail}")
+            raise RuntimeError(f"FFmpegの実行に失敗しました。エラー詳細:\n{error_detail}") from e
 
 
 def movie(video_path: str) -> DeferredVideoSequence:
