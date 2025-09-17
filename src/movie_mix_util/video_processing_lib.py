@@ -329,7 +329,10 @@ class VideoProcessor:
             import ffmpeg
             
             # 背景動画のストリーム作成
-            background = ffmpeg.input(background_video, stream_loop=-1, t=duration, hwaccel=DEFAULT_HWACCEL).video
+            input_kwargs = {'stream_loop': -1, 't': duration}
+            if DEFAULT_HWACCEL:
+                input_kwargs['hwaccel'] = DEFAULT_HWACCEL
+            background = ffmpeg.input(background_video, **input_kwargs).video
             
             # オーバーレイ画像のストリーム作成
             overlay = ffmpeg.input(overlay_image, loop=1, t=duration).filter('scale', scaled_width, scaled_height)
