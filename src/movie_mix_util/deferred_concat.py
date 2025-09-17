@@ -14,13 +14,12 @@ import sys
 from typing import List, Tuple, Literal, Union, Any
 
 # 既存の定義をインポート
+from .video_processing_lib import DEFAULT_VIDEO_CODEC, DEFAULT_PIXEL_FORMAT, DEFAULT_HWACCEL
 from .advanced_video_concatenator import (
     CrossfadeEffect,
     DEFAULT_VIDEO_WIDTH,
     DEFAULT_VIDEO_HEIGHT,
     DEFAULT_FPS,
-    DEFAULT_VIDEO_CODEC,
-    DEFAULT_PIXEL_FORMAT,
     get_video_duration,
     TransitionMode,
 )
@@ -96,13 +95,13 @@ class DeferredVideoSequence:
 
         # 最初のストリーム
         current_video_path = video_ops[0][1]
-        processed_video = ffmpeg.input(current_video_path).video
+        processed_video = ffmpeg.input(current_video_path, hwaccel=DEFAULT_HWACCEL).video
         
         # オーディオストリームの有無をチェック
         try:
             probe = ffmpeg.probe(current_video_path)
             if any(s['codec_type'] == 'audio' for s in probe['streams']):
-                processed_audio = ffmpeg.input(current_video_path).audio
+                processed_audio = ffmpeg.input(current_video_path, hwaccel=DEFAULT_HWACCEL).audio
             else:
                 processed_audio = None
         except ffmpeg.Error:
@@ -115,7 +114,7 @@ class DeferredVideoSequence:
             transition = transition_ops[i]
             _, duration, effect, mode = transition
 
-            next_video_stream = ffmpeg.input(next_video_path)
+            next_video_stream = ffmpeg.input(next_video_path, hwaccel=DEFAULT_HWACCEL)
             next_video_duration = get_video_duration(next_video_path)
 
             # ビデオのxfade

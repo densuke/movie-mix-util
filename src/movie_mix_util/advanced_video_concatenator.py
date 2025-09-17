@@ -20,8 +20,7 @@ from enum import Enum
 DEFAULT_VIDEO_WIDTH = 1920
 DEFAULT_VIDEO_HEIGHT = 1080
 DEFAULT_FPS = 30
-DEFAULT_VIDEO_CODEC = 'libx264'
-DEFAULT_PIXEL_FORMAT = 'yuv420p'
+from .video_processing_lib import DEFAULT_VIDEO_CODEC, DEFAULT_PIXEL_FORMAT, DEFAULT_HWACCEL
 FRAME_DURATION = 0.033  # 1フレーム分の時間
 
 
@@ -231,11 +230,11 @@ def concatenate_videos_advanced(sequence: List[Union[VideoSegment, Transition]],
                     next_item.mode == TransitionMode.CROSSFADE_NO_INCREASE):
                     # 前動画を短縮
                     shortened_duration = current_video_duration - next_item.duration
-                    video_input = ffmpeg.input(item.path, t=shortened_duration)
+                    video_input = ffmpeg.input(item.path, t=shortened_duration, hwaccel=DEFAULT_HWACCEL)
                     print(f"  短縮: {current_video_duration:.1f}s → {shortened_duration:.1f}s")
                 else:
                     # そのまま
-                    video_input = ffmpeg.input(item.path)
+                    video_input = ffmpeg.input(item.path, hwaccel=DEFAULT_HWACCEL)
                     print(f"  長さ: {current_video_duration:.1f}s")
                 
                 segments_list.append(video_input.video)
@@ -466,8 +465,8 @@ def create_crossfade_video(
     
     try:
         # 入力ストリーム準備
-        input1 = ffmpeg.input(video1_path)
-        input2 = ffmpeg.input(video2_path)
+        input1 = ffmpeg.input(video1_path, hwaccel=DEFAULT_HWACCEL)
+        input2 = ffmpeg.input(video2_path, hwaccel=DEFAULT_HWACCEL)
         
         # 出力モードに応じた処理
         if output_mode == CrossfadeOutputMode.FADE_ONLY:

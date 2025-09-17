@@ -11,7 +11,114 @@ from enum import Enum
 import ffmpeg
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Tuple
+import platform
+import os
+
+# 定数定義
+DEFAULT_VIDEO_WIDTH = 1920
+DEFAULT_VIDEO_HEIGHT = 1080
+DEFAULT_FPS = 30
+DEFAULT_PIXEL_FORMAT = 'yuv420p'
+
+# ハードウェアアクセラレーションの検出と設定
+def _get_hw_codec_and_accel() -> Tuple[str, str | None]:
+    """OSとFFmpegのビルド情報に基づいて最適なハードウェアコーデックとアクセラレータを検出する"""
+    hw_codec = 'libx264'  # デフォルトはソフトウェアエンコーダ
+    hw_accel = None
+
+    # 環境変数でハードウェアアクセラレーションを無効化
+    if os.getenv('MOVIE_MIX_DISABLE_HWACCEL', '0') == '1':
+        print("環境変数 MOVIE_MIX_DISABLE_HWACCEL=1 が設定されているため、ハードウェアアクセラレーションを無効にします。")
+        return hw_codec, hw_accel
+
+    try:
+        import subprocess
+        
+        # FFmpegの利用可能なエンコーダを取得
+        encoders_result = subprocess.run(['ffmpeg', '-encoders'], 
+                                       capture_output=True, text=True, check=False)
+        available_encoders = []
+        if encoders_result.returncode == 0:
+            for line in encoders_result.stdout.split('\n'):
+                if 'h264' in line and ('libx264' in line or 'videotoolbox' in line or 'nvenc' in line or 'qsv' in line or 'vaapi' in line):
+                    if 'libx264' in line:
+                        available_encoders.append('libx264')
+                    if 'h264_videotoolbox' in line:
+                        available_encoders.append('h264_videotoolbox')
+                    if 'h264_nvenc' in line:
+                        available_encoders.append('h264_nvenc')
+                    if 'h264_qsv' in line:
+                        available_encoders.append('h264_qsv')
+                    if 'h264_vaapi' in line:
+                        available_encoders.append('h264_vaapi')
+        
+        # FFmpegの利用可能なハードウェアアクセラレーションを取得
+        hwaccels_result = subprocess.run(['ffmpeg', '-hwaccels'], 
+                                       capture_output=True, text=True, check=False)
+        available_hwaccels = []
+        if hwaccels_result.returncode == 0:
+            for line in hwaccels_result.stdout.split('\n'):
+                line = line.strip()
+                if line and line not in ['Hardware acceleration methods:', '']:
+                    available_hwaccels.append(line)
+        
+        sys.stderr.write(f"DEBUG: Available encoders: {available_encoders}\n")
+        sys.stderr.write(f"DEBUG: Available hwaccels: {available_hwaccels}\n")
+
+        system = platform.system()
+
+        if system == 'Darwin':  # macOS
+            if 'h264_videotoolbox' in available_encoders:
+                hw_codec = 'h264_videotoolbox'
+                hw_accel = 'videotoolbox'
+                print(f"macOS: VideoToolboxハードウェアアクセラレーションを有効化します ({hw_codec})")
+            else:
+                print("macOS: h264_videotoolboxが見つかりません。ソフトウェアエンコーダを使用します。")
+        elif system == 'Windows':
+            # NVIDIA NVENC
+            if 'h264_nvenc' in available_encoders:
+                hw_codec = 'h264_nvenc'
+                hw_accel = 'cuda' # または 'd3d11va', 'dxva2'
+                print(f"Windows: NVIDIA NVENCハードウェアアクセラレーションを有効化します ({hw_codec})")
+            # Intel Quick Sync Video (QSV)
+            elif 'h264_qsv' in available_encoders:
+                hw_codec = 'h264_qsv'
+                hw_accel = 'qsv'
+                print(f"Windows: Intel QSVハードウェアアクセラレーションを有効化します ({hw_codec})")
+            else:
+                print("Windows: NVIDIA NVENCまたはIntel QSVが見つかりません。ソフトウェアエンコーダを使用します。")
+        elif system == 'Linux':
+            # NVIDIA NVENC
+            if 'h264_nvenc' in available_encoders:
+                hw_codec = 'h264_nvenc'
+                hw_accel = 'cuda'
+                print(f"Linux: NVIDIA NVENCハードウェアアクセラレーションを有効化します ({hw_codec})")
+            # Intel Quick Sync Video (QSV)
+            elif 'h264_qsv' in available_encoders:
+                hw_codec = 'h264_qsv'
+                hw_accel = 'qsv'
+                print(f"Linux: Intel QSVハードウェアアクセラレーションを有効化します ({hw_codec})")
+            # VAAPI (Intel, AMD, etc.)
+            elif 'h264_vaapi' in available_encoders and 'vaapi' in available_hwaccels:
+                hw_codec = 'h264_vaapi'
+                hw_accel = 'vaapi'
+                print(f"Linux: VAAPIハードウェアアクセラレーションを有効化します ({hw_codec})")
+            else:
+                print("Linux: ハードウェアエンコーダが見つかりません。ソフトウェアエンコーダを使用します。")
+        else:
+            print(f"不明なOS ({system}): ソフトウェアエンコーダを使用します。")
+
+    except Exception as e:
+        print(f"FFmpegビルド情報の取得中にエラーが発生しました: {e}。ソフトウェアエンコーダを使用します。")
+
+    return hw_codec, hw_accel
+
+DEFAULT_VIDEO_CODEC, DEFAULT_HWACCEL = _get_hw_codec_and_accel()
+print(f"DEBUG: Initialized with DEFAULT_VIDEO_CODEC: {DEFAULT_VIDEO_CODEC}, DEFAULT_HWACCEL: {DEFAULT_HWACCEL}")
+
+
+# 既存の実装をインポート
 
 # 既存の実装をインポート
 from .advanced_video_concatenator import (
@@ -222,7 +329,7 @@ class VideoProcessor:
             import ffmpeg
             
             # 背景動画のストリーム作成
-            background = ffmpeg.input(background_video, stream_loop=-1, t=duration).video
+            background = ffmpeg.input(background_video, stream_loop=-1, t=duration, hwaccel=DEFAULT_HWACCEL).video
             
             # オーバーレイ画像のストリーム作成
             overlay = ffmpeg.input(overlay_image, loop=1, t=duration).filter('scale', scaled_width, scaled_height)
@@ -232,7 +339,7 @@ class VideoProcessor:
             
             # 出力設定
             out = ffmpeg.output(combined, output_path, 
-                               vcodec='libx264', 
+                               vcodec=DEFAULT_VIDEO_CODEC, 
                                pix_fmt='yuv420p',
                                r=30)
             
