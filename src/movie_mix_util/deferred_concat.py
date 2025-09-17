@@ -157,6 +157,25 @@ class DeferredVideoSequence:
         print(f"出力ファイル: {output_path}")
         
         try:
+            # 入力動画の最高ビットレートを検出
+            max_bitrate = 0
+            for video_op in video_ops:
+                video_path = video_op[1]
+                try:
+                    probe_result = ffmpeg.probe(video_path)
+                    for stream in probe_result['streams']:
+                        if stream['codec_type'] == 'video' and 'bit_rate' in stream:
+                            bitrate = int(stream['bit_rate'])
+                            max_bitrate = max(max_bitrate, bitrate)
+                except:
+                    continue
+            
+            # デフォルトビットレート（検出できない場合）
+            if max_bitrate == 0:
+                max_bitrate = 5000000  # 5Mbps
+            
+            print(f"検出された最高ビットレート: {max_bitrate / 1000000:.1f}Mbps")
+            
             # ffmpegの実行可能ファイルのパスを環境変数から取得、なければデフォルト
             ffmpeg_path = os.getenv('FFMPEG_PATH', 'ffmpeg')
 
@@ -165,38 +184,40 @@ class DeferredVideoSequence:
             else:
                 output_args = [processed_video, output_path]
 
-            # エンコーダー別のパラメータ設定
+            # エンコーダー別のパラメータ設定（ビットレートベース）
             output_params = {
                 'vcodec': DEFAULT_VIDEO_CODEC,
                 'pix_fmt': DEFAULT_PIXEL_FORMAT,
-                'r': DEFAULT_FPS
+                'r': DEFAULT_FPS,
+                'b:v': max_bitrate  # 元動画の最高ビットレートを維持
             }
             
             # ハードウェアエンコーダー用の追加パラメータ
             if DEFAULT_VIDEO_CODEC == 'h264_videotoolbox':
-                # VideoToolbox用の安定した設定
+                # VideoToolbox用の元動画品質維持設定
                 output_params.update({
-                    'q:v': 23,  # 品質設定（18-28が推奨、23はバランス）
                     'allow_sw': 1,  # ソフトウェアフォールバック許可
-                    'realtime': 0   # リアルタイム制約を無効化
+                    'realtime': 0,   # リアルタイム制約を無効化
+                    'profile:v': 'high',  # プロファイル設定
+                    'level': '4.1'  # レベル設定（1080p対応）
                 })
             elif DEFAULT_VIDEO_CODEC == 'h264_nvenc':
-                # NVENC用の設定
+                # NVENC用の元動画品質維持設定
                 output_params.update({
-                    'cq': 23,
-                    'preset': 'medium'
+                    'preset': 'slow',  # 品質重視
+                    'profile:v': 'high'
                 })
             elif DEFAULT_VIDEO_CODEC == 'h264_qsv':
-                # Intel QSV用の設定
+                # Intel QSV用の元動画品質維持設定
                 output_params.update({
-                    'global_quality': 23,
-                    'preset': 'medium'
+                    'preset': 'slow',
+                    'profile:v': 'high'
                 })
             elif DEFAULT_VIDEO_CODEC == 'libx264':
-                # ソフトウェアエンコーダー用の設定
+                # ソフトウェアエンコーダー用の元動画品質維持設定
                 output_params.update({
-                    'crf': 23,
-                    'preset': 'medium'
+                    'preset': 'slow',  # 品質重視
+                    'profile:v': 'high'
                 })
 
             try:
@@ -220,8 +241,9 @@ class DeferredVideoSequence:
                         'vcodec': 'libx264',
                         'pix_fmt': DEFAULT_PIXEL_FORMAT,
                         'r': DEFAULT_FPS,
-                        'crf': 23,
-                        'preset': 'medium'
+                        'b:v': max_bitrate,  # 元動画のビットレートを維持
+                        'preset': 'slow',  # 品質重視
+                        'profile:v': 'high'
                     }
                     (
                         ffmpeg
