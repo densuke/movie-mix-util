@@ -281,6 +281,38 @@ class VideoProcessor:
                            overlay_image: str, 
                            output_path: str,
                            duration: float = 30.0) -> VideoInfo:
+        """
+        動画と画像をミックスして新しい動画を生成する。
+        ハードウェアアクセラレーションで失敗した場合は、自動的にソフトウェアにフォールバックする。
+        """
+        try:
+            if DEFAULT_HWACCEL:
+                print("🚀 ハードウェアアクセラレーションを有効にして処理を開始します...")
+                return self._mix_video_with_image_internal(
+                    background_video, overlay_image, output_path, duration, use_hwaccel=True
+                )
+            else:
+                print("💿 ハードウェアアクセラレーションが利用できないため、ソフトウェアで処理を開始します...")
+                return self._mix_video_with_image_internal(
+                    background_video, overlay_image, output_path, duration, use_hwaccel=False
+                )
+        except Exception as e:
+            print(f"⚠️ ハードウェアアクセラレーションでエラーが発生しました: {e}")
+            print("🔄 ソフトウェア処理にフォールバックして再試行します...")
+            try:
+                return self._mix_video_with_image_internal(
+                    background_video, overlay_image, output_path, duration, use_hwaccel=False
+                )
+            except Exception as final_e:
+                print(f"❌ ソフトウェア処理でもエラーが発生しました。")
+                raise RuntimeError("ハードウェアおよびソフトウェアの両方の処理でエラーが発生しました。") from final_e
+
+    def _mix_video_with_image_internal(self,
+                           background_video: str,
+                           overlay_image: str, 
+                           output_path: str,
+                           duration: float = 30.0,
+                           use_hwaccel: bool = True) -> VideoInfo:
         """動画と画像をミックスして新しい動画を生成する
         
         背景動画の上に画像をオーバーレイして、指定した長さの動画を生成する。
@@ -304,6 +336,9 @@ class VideoProcessor:
             ... )
             >>> print(f"Mixed video created: {result.path}")
         """
+        hwaccel_to_use = DEFAULT_HWACCEL if use_hwaccel else None
+        video_codec_to_use = DEFAULT_VIDEO_CODEC if use_hwaccel else 'libx264'
+
         try:
             # 静止画のサイズを取得
             from PIL import Image
@@ -330,8 +365,8 @@ class VideoProcessor:
             
             # 背景動画のストリーム作成
             input_kwargs = {'stream_loop': -1, 't': duration}
-            if DEFAULT_HWACCEL:
-                input_kwargs['hwaccel'] = DEFAULT_HWACCEL
+            if hwaccel_to_use:
+                input_kwargs['hwaccel'] = hwaccel_to_use
             background = ffmpeg.input(background_video, **input_kwargs).video
             
             # オーバーレイ画像のストリーム作成
@@ -342,7 +377,7 @@ class VideoProcessor:
             
             # 出力設定
             out = ffmpeg.output(combined, output_path, 
-                               vcodec=DEFAULT_VIDEO_CODEC, 
+                               vcodec=video_codec_to_use, 
                                pix_fmt='yuv420p',
                                r=30)
             

@@ -422,6 +422,45 @@ def create_crossfade_video(
     output_mode: CrossfadeOutputMode = CrossfadeOutputMode.FADE_ONLY,
     custom_duration: float | None = None
 ) -> dict[str, Any]:
+    """
+    2つの動画間のクロスフェード動画を生成する。
+    ハードウェアアクセラレーションで失敗した場合は、自動的にソフトウェアにフォールバックする。
+    """
+    try:
+        if DEFAULT_HWACCEL:
+            print("🚀 ハードウェアアクセラレーションを有効にして処理を開始します...")
+            return _create_crossfade_video_internal(
+                video1_path, video2_path, fade_duration, output_path,
+                effect, output_mode, custom_duration, use_hwaccel=True
+            )
+        else:
+            print("💿 ハードウェアアクセラレーションが利用できないため、ソフトウェアで処理を開始します...")
+            return _create_crossfade_video_internal(
+                video1_path, video2_path, fade_duration, output_path,
+                effect, output_mode, custom_duration, use_hwaccel=False
+            )
+    except Exception as e:
+        print(f"⚠️ ハードウェアアクセラレーションでエラーが発生しました: {e}")
+        print("🔄 ソフトウェア処理にフォールバックして再試行します...")
+        try:
+            return _create_crossfade_video_internal(
+                video1_path, video2_path, fade_duration, output_path,
+                effect, output_mode, custom_duration, use_hwaccel=False
+            )
+        except Exception as final_e:
+            print(f"❌ ソフトウェア処理でもエラーが発生しました。")
+            raise RuntimeError("ハードウェアおよびソフトウェアの両方の処理でエラーが発生しました。") from final_e
+
+def _create_crossfade_video_internal(
+    video1_path: str,
+    video2_path: str, 
+    fade_duration: float,
+    output_path: str,
+    effect: CrossfadeEffect = CrossfadeEffect.FADE,
+    output_mode: CrossfadeOutputMode = CrossfadeOutputMode.FADE_ONLY,
+    custom_duration: float | None = None,
+    use_hwaccel: bool = True
+) -> dict[str, Any]:
     """2つの動画間のクロスフェード動画を生成する
     
     Args:
@@ -441,6 +480,8 @@ def create_crossfade_video(
         ValueError: パラメータが不正な場合
         ffmpeg.Error: FFmpeg処理でエラーが発生した場合
     """
+    hwaccel_to_use = DEFAULT_HWACCEL if use_hwaccel else None
+    video_codec_to_use = DEFAULT_VIDEO_CODEC if use_hwaccel else 'libx264'
     # 入力ファイルの存在チェック
     for path in [video1_path, video2_path]:
         if not os.path.exists(path):
@@ -465,8 +506,11 @@ def create_crossfade_video(
     
     try:
         # 入力ストリーム準備
-        input1 = ffmpeg.input(video1_path, hwaccel=DEFAULT_HWACCEL)
-        input2 = ffmpeg.input(video2_path, hwaccel=DEFAULT_HWACCEL)
+        input_kwargs = {}
+        if hwaccel_to_use:
+            input_kwargs['hwaccel'] = hwaccel_to_use
+        input1 = ffmpeg.input(video1_path, **input_kwargs)
+        input2 = ffmpeg.input(video2_path, **input_kwargs)
         
         # 出力モードに応じた処理
         if output_mode == CrossfadeOutputMode.FADE_ONLY:
@@ -550,7 +594,7 @@ def create_crossfade_video(
             
         # 出力設定
         out = ffmpeg.output(crossfaded, output_path,
-                          vcodec=DEFAULT_VIDEO_CODEC,
+                          vcodec=video_codec_to_use,
                           pix_fmt=DEFAULT_PIXEL_FORMAT,
                           r=DEFAULT_FPS)
         

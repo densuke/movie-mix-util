@@ -80,11 +80,38 @@ class DeferredVideoSequence:
     def execute(self, output_path: str, quiet: bool = False) -> dict[str, Any]:
         """
         定義されたシーケンスに基づいて動画連結処理を実行する。
+        ハードウェアアクセラレーションで失敗した場合は、自動的にソフトウェアにフォールバックする。
+        """
+        try:
+            # まずはハードウェアアクセラレーションを試す
+            if DEFAULT_HWACCEL:
+                print("🚀 ハードウェアアクセラレーションを有効にして処理を開始します...")
+                return self._execute_internal(output_path, quiet=quiet, use_hwaccel=True)
+            else:
+                # HWAが利用できない場合は、最初からソフトウェアで実行
+                print("💿 ハードウェアアクセラレーションが利用できないため、ソフトウェアで処理を開始します...")
+                return self._execute_internal(output_path, quiet=quiet, use_hwaccel=False)
+        except Exception as e:
+            # 実行に失敗した場合、use_hwaccel=Falseで再実行
+            print(f"⚠️ ハードウェアアクセラレーションでエラーが発生しました: {e}")
+            print("🔄 ソフトウェア処理にフォールバックして再試行します...")
+            try:
+                return self._execute_internal(output_path, quiet=quiet, use_hwaccel=False)
+            except Exception as final_e:
+                print(f"❌ ソフトウェア処理でもエラーが発生しました。")
+                raise RuntimeError("ハードウェアおよびソフトウェアの両方の処理でエラーが発生しました。") from final_e
+
+    def _execute_internal(self, output_path: str, quiet: bool = False, use_hwaccel: bool = True) -> dict[str, Any]:
+        """
+        定義されたシーケンスに基づいて動画連結処理を実行する。
 
         Raises:
             RuntimeError: FFmpegの実行に失敗した場合。
             ValueError: シーケンスに動画が1つしか定義されていない場合。
         """
+        hwaccel_to_use = DEFAULT_HWACCEL if use_hwaccel else None
+        video_codec_to_use = DEFAULT_VIDEO_CODEC if use_hwaccel else 'libx264'
+
         video_ops = [op for op in self._operations if op[0] == 'add_video']
         if len(video_ops) < 2:
             raise ValueError("連結するには少なくとも2つの動画が必要です。")
@@ -95,8 +122,8 @@ class DeferredVideoSequence:
 
         # 最初のストリーム
         current_video_path = video_ops[0][1]
-        if DEFAULT_HWACCEL:
-            processed_video = ffmpeg.input(current_video_path, hwaccel=DEFAULT_HWACCEL).video
+        if hwaccel_to_use:
+            processed_video = ffmpeg.input(current_video_path, hwaccel=hwaccel_to_use).video
         else:
             processed_video = ffmpeg.input(current_video_path).video
         
@@ -104,8 +131,8 @@ class DeferredVideoSequence:
         try:
             probe = ffmpeg.probe(current_video_path)
             if any(s['codec_type'] == 'audio' for s in probe['streams']):
-                if DEFAULT_HWACCEL:
-                    processed_audio = ffmpeg.input(current_video_path, hwaccel=DEFAULT_HWACCEL).audio
+                if hwaccel_to_use:
+                    processed_audio = ffmpeg.input(current_video_path, hwaccel=hwaccel_to_use).audio
                 else:
                     processed_audio = ffmpeg.input(current_video_path).audio
             else:
@@ -120,8 +147,8 @@ class DeferredVideoSequence:
             transition = transition_ops[i]
             _, duration, effect, mode = transition
 
-            if DEFAULT_HWACCEL:
-                next_video_stream = ffmpeg.input(next_video_path, hwaccel=DEFAULT_HWACCEL)
+            if hwaccel_to_use:
+                next_video_stream = ffmpeg.input(next_video_path, hwaccel=hwaccel_to_use)
             else:
                 next_video_stream = ffmpeg.input(next_video_path)
             next_video_duration = get_video_duration(next_video_path)
@@ -195,14 +222,14 @@ class DeferredVideoSequence:
 
             # エンコーダー別のパラメータ設定（ビットレートベース）
             output_params = {
-                'vcodec': DEFAULT_VIDEO_CODEC,
+                'vcodec': video_codec_to_use,
                 'pix_fmt': DEFAULT_PIXEL_FORMAT,
                 'r': DEFAULT_FPS,
                 'b:v': max_bitrate  # 元動画の最高ビットレートを維持
             }
             
             # ハードウェアエンコーダー用の追加パラメータ
-            if DEFAULT_VIDEO_CODEC == 'h264_videotoolbox':
+            if video_codec_to_use == 'h264_videotoolbox':
                 # VideoToolbox用の元動画品質維持設定
                 output_params.update({
                     'allow_sw': 1,  # ソフトウェアフォールバック許可
@@ -210,7 +237,7 @@ class DeferredVideoSequence:
                     'profile:v': 'high',  # プロファイル設定
                     'level': '4.1'  # レベル設定（1080p対応）
                 })
-            elif DEFAULT_VIDEO_CODEC == 'h264_nvenc':
+            elif video_codec_to_use == 'h264_nvenc':
                 # NVENC用の元動画品質維持設定
                 output_params.update({
                     'preset': 'slow',  # 品質重視
@@ -229,40 +256,12 @@ class DeferredVideoSequence:
                     'profile:v': 'high'
                 })
 
-            try:
-                (
-                    ffmpeg
-                    .output(*output_args, **output_params)
-                    .overwrite_output()
-                    .run(cmd=ffmpeg_path, quiet=quiet)
-                )
-            except ffmpeg.Error as hw_error:
-                # ハードウェアエンコーダーが失敗した場合、ソフトウェアエンコーダーにフォールバック
-                if DEFAULT_VIDEO_CODEC != 'libx264':
-                    print(f"⚠️ ハードウェアエンコーダー({DEFAULT_VIDEO_CODEC})が失敗しました。ソフトウェアエンコーダーで再試行します。")
-                    
-                    # エラー詳細の出力（デバッグ用）
-                    if hasattr(hw_error, 'stderr') and hw_error.stderr:
-                        stderr_text = hw_error.stderr.decode('utf-8', errors='ignore') if isinstance(hw_error.stderr, bytes) else str(hw_error.stderr)
-                        print(f"ハードウェアエンコーダーエラー詳細: {stderr_text[:500]}...")
-                    
-                    fallback_params = {
-                        'vcodec': 'libx264',
-                        'pix_fmt': DEFAULT_PIXEL_FORMAT,
-                        'r': DEFAULT_FPS,
-                        'b:v': max_bitrate,  # 元動画のビットレートを維持
-                        'preset': 'slow',  # 品質重視
-                        'profile:v': 'high'
-                    }
-                    (
-                        ffmpeg
-                        .output(*output_args, **fallback_params)
-                        .overwrite_output()
-                        .run(cmd=ffmpeg_path, quiet=quiet)
-                    )
-                else:
-                    # すでにソフトウェアエンコーダーの場合は例外を再発生
-                    raise hw_error
+            (
+                ffmpeg
+                .output(*output_args, **output_params)
+                .overwrite_output()
+                .run(cmd=ffmpeg_path, quiet=quiet)
+            )
             
             print("✅ 動画連結処理が完了しました。")
             
