@@ -114,6 +114,44 @@ def _get_hw_codec_and_accel() -> Tuple[str, str | None]:
 
     return hw_codec, hw_accel
 
+
+def should_use_hardware_acceleration(operation_type: str) -> bool:
+    """
+    処理タイプに応じてハードウェアアクセラレーションの使用可否を判定する
+    
+    Args:
+        operation_type (str): 処理タイプ ('mix', 'concat', 'crossfade')
+        
+    Returns:
+        bool: ハードウェアアクセラレーションを使用するかどうか
+    """
+    # 結合処理(concat/crossfade)は常にソフトウェア処理を使用
+    # 結合処理でのHWAは品質劣化の原因となるため
+    if operation_type in ['concat', 'crossfade']:
+        return False
+    
+    # 環境変数で全体的に無効化されている場合
+    if os.getenv('MOVIE_MIX_DISABLE_HWACCEL', '0') == '1':
+        return False
+    
+    # ソフトウェアエンコーダーが選択されている場合
+    if DEFAULT_VIDEO_CODEC == 'libx264':
+        return False
+    
+    # mix処理のみHWA設定を考慮
+    if operation_type == 'mix':
+        mix_setting = os.getenv('MOVIE_MIX_HWA_MIX', 'auto')
+        
+        if mix_setting == 'enabled':
+            return True
+        elif mix_setting == 'disabled':
+            return False
+        elif mix_setting == 'auto':
+            # 自動判定: mix処理でのみHWAを使用
+            return True
+    
+    return False
+
 DEFAULT_VIDEO_CODEC, DEFAULT_HWACCEL = _get_hw_codec_and_accel()
 print(f"DEBUG: Initialized with DEFAULT_VIDEO_CODEC: {DEFAULT_VIDEO_CODEC}, DEFAULT_HWACCEL: {DEFAULT_HWACCEL}")
 
@@ -346,7 +384,8 @@ class VideoProcessor:
                 out = ffmpeg.output(combined, output_path, 
                                    vcodec=DEFAULT_VIDEO_CODEC, 
                                    pix_fmt='yuv420p',
-                                   r=30)
+                                   r=30,
+                                   b='5M')  # 5Mbps高品質設定
                 
                 # 既存ファイルがあれば上書き
                 out = ffmpeg.overwrite_output(out)
@@ -372,7 +411,8 @@ class VideoProcessor:
                                    vcodec='libx264',  # ソフトウェアエンコーダー
                                    pix_fmt='yuv420p',
                                    r=30,
-                                   preset='medium')
+                                   crf=18,  # 高品質設定 (18-23が推奨)
+                                   preset='slow')  # 品質重視
                 
                 # 既存ファイルがあれば上書き
                 out = ffmpeg.overwrite_output(out)

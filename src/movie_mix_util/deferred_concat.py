@@ -14,7 +14,7 @@ import sys
 from typing import List, Tuple, Literal, Union, Any
 
 # 既存の定義をインポート
-from .video_processing_lib import DEFAULT_VIDEO_CODEC, DEFAULT_PIXEL_FORMAT, DEFAULT_HWACCEL
+from .video_processing_lib import DEFAULT_VIDEO_CODEC, DEFAULT_PIXEL_FORMAT, DEFAULT_HWACCEL, should_use_hardware_acceleration
 from .advanced_video_concatenator import (
     CrossfadeEffect,
     DEFAULT_VIDEO_WIDTH,
@@ -93,9 +93,13 @@ class DeferredVideoSequence:
 
         transition_ops = [op for op in self._operations if op[0] == 'transition']
 
+        # クロスフェード処理のHWA判定
+        use_hwaccel_for_crossfade = should_use_hardware_acceleration('crossfade')
+        print(f"🎯 クロスフェード処理: HWA使用判定 = {use_hwaccel_for_crossfade}")
+
         # 最初のストリーム
         current_video_path = video_ops[0][1]
-        if DEFAULT_HWACCEL:
+        if use_hwaccel_for_crossfade and DEFAULT_HWACCEL:
             processed_video = ffmpeg.input(current_video_path, hwaccel=DEFAULT_HWACCEL).video
         else:
             processed_video = ffmpeg.input(current_video_path).video
@@ -104,7 +108,7 @@ class DeferredVideoSequence:
         try:
             probe = ffmpeg.probe(current_video_path)
             if any(s['codec_type'] == 'audio' for s in probe['streams']):
-                if DEFAULT_HWACCEL:
+                if use_hwaccel_for_crossfade and DEFAULT_HWACCEL:
                     processed_audio = ffmpeg.input(current_video_path, hwaccel=DEFAULT_HWACCEL).audio
                 else:
                     processed_audio = ffmpeg.input(current_video_path).audio
@@ -120,7 +124,7 @@ class DeferredVideoSequence:
             transition = transition_ops[i]
             _, duration, effect, mode = transition
 
-            if DEFAULT_HWACCEL:
+            if use_hwaccel_for_crossfade and DEFAULT_HWACCEL:
                 next_video_stream = ffmpeg.input(next_video_path, hwaccel=DEFAULT_HWACCEL)
             else:
                 next_video_stream = ffmpeg.input(next_video_path)
@@ -258,6 +262,9 @@ class DeferredVideoSequence:
                 except ffmpeg.Error:
                     pass
                 
+                # total_duration の再計算（ソフトウェアフォールバック用）
+                sw_total_duration = get_video_duration(current_video_path)
+                
                 # ビデオ処理の再構築
                 for i, next_video_op in enumerate(video_ops[1:]):
                     next_video_path = next_video_op[1]
@@ -270,9 +277,9 @@ class DeferredVideoSequence:
                     # ビデオのxfade
                     xfade_offset = 0.0
                     if mode == TransitionMode.CROSSFADE_NO_INCREASE:
-                        xfade_offset = total_duration - duration
+                        xfade_offset = sw_total_duration - duration
                     elif mode == TransitionMode.CROSSFADE_INCREASE:
-                        xfade_offset = total_duration
+                        xfade_offset = sw_total_duration
 
                     sw_processed_video = ffmpeg.filter(
                         [sw_processed_video.filter('fps', fps=DEFAULT_FPS), next_video_stream.video.filter('fps', fps=DEFAULT_FPS)],
@@ -294,6 +301,12 @@ class DeferredVideoSequence:
                                 )
                         except ffmpeg.Error:
                             pass
+
+                    # total_duration の更新（ソフトウェアフォールバック用）
+                    if mode == TransitionMode.CROSSFADE_NO_INCREASE:
+                        sw_total_duration += next_video_duration - duration
+                    elif mode == TransitionMode.CROSSFADE_INCREASE:
+                        sw_total_duration += next_video_duration
                 
                 # ソフトウェアエンコーダー用の出力設定
                 if sw_processed_audio:
