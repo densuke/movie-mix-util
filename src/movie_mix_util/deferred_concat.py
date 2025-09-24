@@ -353,7 +353,7 @@ class DeferredVideoSequence:
                         _try_software_fallback(stderr_text)
                     except ffmpeg.Error as sw_error:
                         # ソフトウェアフォールバックも失敗した場合
-                        raise hw_error
+                        raise sw_error from hw_error
                 else:
                     # すでにソフトウェアエンコーダーの場合は例外を再発生
                     raise hw_error
